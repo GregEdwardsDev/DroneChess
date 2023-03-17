@@ -1,10 +1,8 @@
 // Script assets have changed for v2.3.0 see
 // https://help.yoyogames.com/hc/en-us/articles/360005277377 for more information
-function Script1(){
-}
 
 //
-// PRIVATE FUNCTIONS
+// PRIVATE FUNCTIONS - these not called directly from GameMaker events
 //
 function dc_i_make_instance_grid() {
   if (global.dc_grid_built) return;
@@ -136,12 +134,190 @@ function dc_i_find_sel2(mouse_gx, mouse_gy, limited) {
 }
 
 
+
+
 //
-// EVENT HANDLERS
+// STATE FUNCTIONS
 //
+function dc_i_fsm_debug(dc_event) {
+  // show_debug_message("DEBUG: State={0} Event={1}", global.dc_state, dc_event);
+}
+
+function dc_i_fsm(dc_event) {
+  dc_i_fsm_debug(dc_event);
+  switch (global.dc_state) {
+    case DC_STATE_GAME_START:    dc_i_fsm_game_start(dc_event); return;
+    case DC_STATE_TURN_START:    dc_i_fsm_turn_start(dc_event); return;
+    case DC_STATE_USER_SELECT:   dc_i_fsm_user_select(dc_event); return;
+    case DC_STATE_USER_ANIMATE:  dc_i_fsm_user_animate(dc_event); return;
+    case DC_STATE_ENEMY_ANIMATE: dc_i_fsm_enemy_animate(dc_event); return;
+    case DC_STATE_TURN_END:      dc_i_fsm_turn_end(dc_event); return;
+    case DC_STATE_GAME_END:      dc_i_fsm_game_end(dc_event); return;
+    default: dc_i_fsm_state_invalid(dc_event); return;
+  }
+}
+function dc_i_fsm_game_start(dc_event) {
+  // Setup overall game state
+  global.dc_state = DC_STATE_TURN_START;
+  dc_i_fsm(DC_EVENT_ENTER_STATE);
+}
+function dc_i_fsm_turn_start(dc_event) {
+  // Setup room state
+  global.dc_state = DC_STATE_USER_SELECT;
+  dc_i_fsm(DC_EVENT_ENTER_STATE);
+}
+function dc_i_fsm_user_select(dc_event) {
+  if (dc_event == DC_EVENT_OBJECT_SELECTED) {
+  }
+  if (dc_event == DC_EVENT_DEST_SELECTED) {
+    global.dc_object_animate = global.dc_object_selected;
+    global.dc_state = DC_STATE_USER_ANIMATE;
+    dc_i_fsm(DC_EVENT_ENTER_STATE);
+  }
+}
+function dc_i_fsm_user_animate(dc_event) {
+  if (dc_event == DC_EVENT_ANIMATE_ENDED) {
+    global.dc_state = DC_STATE_USER_SELECT;
+    dc_i_fsm(DC_EVENT_ENTER_STATE);
+  }
+}
+function dc_i_fsm_enemy_animate(dc_event) {
+}
+function dc_i_fsm_turn_end(dc_event) {
+}
+function dc_i_fsm_game_emd(dc_event) {
+}
+function dc_i_fsm_state_invalid(dc_event) {
+  dc_i_fsm_debug(dc_event);
+}
+
+
+
+function dc_i_coords_read() {
+  // Read sel0_gx/gy back into specific object gx/gy coords
+  var gx = global.dc_sel0_gx;
+  var gy = global.dc_sel0_gy;
+  switch (global.dc_object_selected) {
+    case DC_OBJECT_DRONE:    global.dc_drone_gx = gx;    global.dc_drone_gy = gy;    break;
+    case DC_OBJECT_MISSILE:  global.dc_missile_gx = gx;  global.dc_missile_gy = gy;  break;
+    case DC_OBJECT_DISPLACE: global.dc_displace_gx = gx; global.dc_displace_gy = gy; break;
+    case DC_OBJECT_LASER:    global.dc_laser_gx = gx;    global.dc_laser_gy = gy;    break;
+    case DC_OBJECT_FIELD:    global.dc_field_gx = gx;    global.dc_field_gy = gy;    break;
+  }
+  global.dc_sel0_gx = -1;
+  global.dc_sel0_gy = -1;
+}
+function dc_i_coords_write() {
+  // Write specific object gx/gy coords into sel0_gx/gy to allow object to be moved
+  var gx = -1;
+  var gy = -1;
+  switch (global.dc_object_selected) {
+    case DC_OBJECT_DRONE:    gx = global.dc_drone_gx;    gy = global.dc_drone_gy;    break;
+    case DC_OBJECT_MISSILE:  gx = global.dc_missile_gx;  gy = global.dc_missile_gy;  break;
+    case DC_OBJECT_DISPLACE: gx = global.dc_displace_gx; gy = global.dc_displace_gy; break;
+    case DC_OBJECT_LASER:    gx = global.dc_laser_gx;    gy = global.dc_laser_gy;    break;
+    case DC_OBJECT_FIELD:    gx = global.dc_field_gx;    gy = global.dc_field_gy;    break;
+  }
+  global.dc_sel0_gx = gx;
+  global.dc_sel0_gy = gy;
+}
+
+// Call this function to enable/disable buttons - honours true/false vals in global.dc_button_XX_available
+function dc_i_button_control() {
+  if (global.dc_button_laser_available) {
+    obj_buttonlaser.sprite_index = (global.dc_object_selected == DC_OBJECT_LASER) ?spr_buttonlaserOn :spr_buttonlaserOff;
+  } else {
+    obj_buttonlaser.sprite_index = spr_buttonlaserUnav;
+  }
+  if (global.dc_button_missile_available) {
+    obj_buttonmissile.sprite_index = (global.dc_object_selected == DC_OBJECT_MISSILE) ?spr_buttonmissileOn :spr_buttonmissileOff;
+  } else {
+    obj_buttonmissile.sprite_index = spr_buttonmissileUnav;
+  }
+  if (global.dc_button_field_available) {
+    obj_buttonfield.sprite_index = (global.dc_object_selected == DC_OBJECT_FIELD) ?spr_buttonfieldOn :spr_buttonfieldOff;
+  } else {
+    obj_buttonfield.sprite_index = spr_buttonfieldUnav;
+  }
+  if (global.dc_button_displace_available) {
+    obj_buttondisplace.sprite_index = (global.dc_object_selected == DC_OBJECT_DISPLACE) ?spr_buttondisplaceOn :spr_buttondisplaceOff;
+  } else {
+    obj_buttondisplace.sprite_index = spr_buttondisplaceUnav;
+  }
+}
+
+
+//
+// STEP FUNCTIONS and STEP UTILITY FUNCTIONS
+//
+function dc_i_set_speed_direction(spd) {
+  if ((global.dc_sel0_gx < 0) || (global.dc_sel0_gy < 0) || (global.dc_sel1_gx < 0) || (global.dc_sel1_gy < 0)) return;
+  if ((global.dc_sel0_gx == global.dc_sel1_gx) && (global.dc_sel0_gy == global.dc_sel1_gy)) return;
+  // var sel0_px = global.dc_grid_min_px + (global.dc_sel0_gx * global.dc_grid_cell_width);
+  // var sel0_py = global.dc_grid_min_py + (global.dc_sel0_gy * global.dc_grid_cell_height);
+  var sel1_px = global.dc_grid_min_px + (global.dc_sel1_gx * global.dc_grid_cell_width);
+  var sel1_py = global.dc_grid_min_py + (global.dc_sel1_gy * global.dc_grid_cell_height) - global.dc_grid_cell_height_offset;
+  var pdist = point_distance(x, y, sel1_px, sel1_py);
+  if (pdist < global.dc_grid_min_distance) {
+    global.dc_sel0_gx = global.dc_sel1_gx;
+    global.dc_sel0_gy = global.dc_sel1_gy;
+    speed = 0;
+  } else {
+    speed = min(pdist, spd);  // This stops the object oscillating at its endpoint
+    direction = point_direction(x, y, sel1_px, sel1_py);
+  }
+  // show_debug_message("Sel0=[{0},{1}] Sel1=[{2},{3}]  Dist={4} Speed={6}",
+  //                   global.dc_sel0_gx, global.dc_sel0_gy, global.dc_sel1_gx, global.dc_sel2_gy, pdist, speed);
+}
+
+function dc_step_drone() {
+  if (global.dc_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
+  if (global.dc_object_animate != DC_OBJECT_DRONE) return;  // Must be animating DRONE
+  dc_i_set_speed_direction(10);
+  if (speed == 0) dc_i_fsm(DC_EVENT_ANIMATE_ENDED);
+}
+function dc_step_missile() {
+  if (global.dc_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
+  if (global.dc_object_animate != DC_OBJECT_MISSILE) return;  // Must be animating DRONE
+  dc_i_set_speed_direction(50);
+  if (speed == 0) dc_i_fsm(DC_EVENT_ANIMATE_ENDED);
+}
+function dc_step_human() {
+  if (global.dc_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
+  if (global.dc_object_animate != DC_OBJECT_HUMAN) return;  // Must be animating DRONE
+  dc_i_set_speed_direction(5);
+  if (speed == 0) dc_i_fsm(DC_EVENT_ANIMATE_ENDED);
+}
+function dc_step_laser() {
+  if (global.dc_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
+  if (global.dc_object_animate != DC_OBJECT_LASER) return;  // Must be animating DRONE
+  dc_i_set_speed_direction(100);
+  if (speed == 0) dc_i_fsm(DC_EVENT_ANIMATE_ENDED);
+}
+function dc_step_enemy() {
+  if (global.dc_state != DC_STATE_ENEMY_ANIMATE) return;  // Must be in STATE UserAnimate
+  if (global.dc_object_animate != DC_OBJECT_ENEMY) return;  // Must be animating DRONE
+  dc_i_set_speed_direction(1);
+  if (speed == 0) dc_i_fsm(DC_EVENT_ANIMATE_ENDED);
+}
+
+
+
+
+
+//
+// EVENT HANDLERS and EVENT HANDLER UTILITY FUNCTIONS
+//
+function dc_i_clear_selection_line() {
+  // Clear existing selection if we have one
+  dc_i_selection_onoff(global.dc_sel0_gx, global.dc_sel0_gy, global.dc_sel1_gx, global.dc_sel1_gy, false);
+  // Invalidate sel1
+  global.dc_sel1_gx = -1;
+  global.dc_sel1_gy = -1;
+}
 function dc_ev_draw_new_selection_line(mouse_px, mouse_py) {
   // CALLED when mouse enters any tile - only does stuff if state is Select
-  if (global.dc_state != 1) return;
+  if (global.dc_state != DC_STATE_USER_SELECT) return;
 
   // Uses global state:
   // 1. dc_sel0_gx|gy - grid pos of active object (ie drone or missile) (may be -1/-1 if no selection)
@@ -149,7 +325,7 @@ function dc_ev_draw_new_selection_line(mouse_px, mouse_py) {
   // 3. dc_sel_line_limited - whether selection line should be limited by walls/obstacles
   dc_i_make_instance_grid();  // only builds grid the first time
 
-  // Map mouse pixel postion to grid position
+  // Map mouse pixel position to grid position
   if ((global.dc_sel0_gx < 0) || (global.dc_sel0_gy < 0)) return;  // Bail if no sel0
   if ((mouse_px < global.dc_grid_min_px) || (mouse_px > global.dc_grid_max_px)) return;  // Bail if bad x
   if ((mouse_py < global.dc_grid_min_py) || (mouse_py > global.dc_grid_max_py)) return;  // Bail if bad y
@@ -187,94 +363,78 @@ function dc_ev_draw_new_selection_line(mouse_px, mouse_py) {
   global.dc_sel1_gx = global.dc_sel2_gx;
   global.dc_sel1_gy = global.dc_sel2_gy;
 }
-function dc_ev_select_object(which) {
-  // TODO: !!!!!!!!!!! Should 'grey' out buttons if not available !!!!!!!!!!
-  // CALLED on button press - only does stuff if state is Select
-  if (global.dc_state != 1) return;
 
-  // 0=None 1=Drone 2=Missile 3=Human 4=Laser 5=Enemy
-  if ((which < 1) || (which > 4)) return;
-  global.dc_object_selected = which;
-}
-function dc_ev_select_dest() {
-  // Called on mouse release if on tile NOT on button - only does stuff if state is Select
-  if (global.dc_state != 1) return;
+function dc_ev_select_dest(mouse_px, mouse_py) {
+  // Called on mouse release if on tile NOT on button - only does stuff if state is USER_SELECT
+  if (global.dc_state != DC_STATE_USER_SELECT) return;
   // Only does stuff if an object has been selected
-  if ((global.dc_object_selected < 1) || (global.dc_object_selected > 4)) return;
+  if ((global.dc_object_selected < DC_OBJECT_DRONE) || (global.dc_object_selected > DC_OBJECT_FIELD)) return;
   // Only does stuff if valid sel0 and sel1
   if ((global.dc_sel0_gx < 0) || (global.dc_sel0_gy < 0) || (global.dc_sel1_gx < 0) || (global.dc_sel1_gy < 0)) return;
   // Only does stuff if sel0 != sel1
   if ((global.dc_sel0_gx == global.dc_sel1_gx) && (global.dc_sel0_gy == global.dc_sel1_gy)) return;
 
-  // Clear existing selection
+  // Clear existing selection - but leave sel1 as is for animation
   dc_i_selection_onoff(global.dc_sel0_gx, global.dc_sel0_gy, global.dc_sel1_gx, global.dc_sel1_gy, false);
 
-  // Any go to animate state
-  dc_state_animate();
+  // Report destination selected
+  dc_i_fsm(DC_EVENT_DEST_SELECTED);
 }
 
+function dc_ev_button_action(dc_obj_this, dc_action, dc_spr_on, dc_spr_off, dc_spr_hov, dc_spr_unav) {
+  // Called when any action button clicked - only does stuff if state is USER_SELECT
+  if (global.dc_state != DC_STATE_USER_SELECT) return;
+  // Clear any existing selection line
+  dc_i_clear_selection_line();
+  // Bail if this button's sprite has been set to the 'unavailable' sprite
+  if (sprite_index == dc_spr_unav) return;
 
-//
-// STATE FUNCTIONS
-//
-function dc_state_select() {
-  global.dc_state = 1;
-  global.dc_object_animate = 0;
-}
-function dc_state_animate() {
-  global.dc_state = 2;
-  global.dc_object_animate = global.dc_object_selected;
-}
+  if (dc_action == DC_ACTION_ENTER) {
+    sprite_index = dc_spr_hov;
 
+  } else if (dc_action == DC_ACTION_CLICK) {
+    // Stash old sel0_gx/gy coords back into old object
+    dc_i_coords_read();
+    // If clicked object NOT already selected, DO select otherwise DO deselect and go back to selecting DRONE
+    var cur_obj_sel = global.dc_object_selected;
+    var new_obj_sel = (dc_obj_this == cur_obj_sel) ?DC_OBJECT_DRONE :dc_obj_this;
+    if (cur_obj_sel != new_obj_sel) {
+      // Setup new sel0_gx/gy coords from new object
+      global.dc_object_selected = new_obj_sel;
+      dc_i_coords_write();
+      dc_i_button_control();
+    }
+    // dc_i_fsm(DC_EVENT_OBJECT_SELECTED);  // Report object selected
 
-//
-// STEP FUNCTIONS
-//
-function dc_step_drone() {
-  if (global.dc_object_animate != 1) return;
-  dc_set_speed_direction(10);
-  if (speed == 0) dc_state_select();
-}
-function dc_step_missile() {
-  if (global.dc_object_animate != 2) return;
-  dc_set_speed_direction(50);
-  if (speed == 0) dc_state_select();
-}
-function dc_step_human() {
-  if (global.dc_object_animate != 3) return;
-  dc_set_speed_direction(5);
-  if (speed == 0) dc_state_select();
-}
-function dc_step_laser() {
-  if (global.dc_object_animate != 4) return;
-  dc_set_speed_direction(100);
-  if (speed == 0) dc_state_select();
-}
-function dc_step_enemy() {
-  if (global.dc_object_animate != 5) return;
-  dc_set_speed_direction(1);
-  if (speed == 0) dc_state_select();
-}
-
-
-
-
-function dc_set_speed_direction(spd) {
-  if ((global.dc_sel0_gx < 0) || (global.dc_sel0_gy < 0) || (global.dc_sel1_gx < 0) || (global.dc_sel1_gy < 0)) return;
-  if ((global.dc_sel0_gx == global.dc_sel1_gx) && (global.dc_sel0_gy == global.dc_sel1_gy)) return;
-  // var sel0_px = global.dc_grid_min_px + (global.dc_sel0_gx * global.dc_grid_cell_width);
-  // var sel0_py = global.dc_grid_min_py + (global.dc_sel0_gy * global.dc_grid_cell_height);
-  var sel1_px = global.dc_grid_min_px + (global.dc_sel1_gx * global.dc_grid_cell_width);
-  var sel1_py = global.dc_grid_min_py + (global.dc_sel1_gy * global.dc_grid_cell_height) - global.dc_grid_cell_height_offset;
-  var pdist = point_distance(x, y, sel1_px, sel1_py);
-  if (pdist < global.dc_grid_min_distance) {
-    global.dc_sel0_gx = global.dc_sel1_gx;
-    global.dc_sel0_gy = global.dc_sel1_gy;
-    speed = 0;
-  } else {
-    speed = min(pdist, spd);  // This stops the object oscillating at its endpoint
-    direction = point_direction(x, y, sel1_px, sel1_py);
+  } else if (dc_action == DC_ACTION_EXIT) {
+    sprite_index = (dc_obj_this == global.dc_object_selected) ?dc_spr_on :dc_spr_off;
   }
-  // show_debug_message("Sel0=[{0},{1}] Sel1=[{2},{3}]  Dist={4} Speed={6}",
-  //                   global.dc_sel0_gx, global.dc_sel0_gy, global.dc_sel1_gx, global.dc_sel2_gy, pdist, speed);
 }
+
+
+
+function dc_ev_select_object_DEPRECATED(which) {
+  // TODO: !!!!!!!!!!! Should 'grey' out buttons if not available !!!!!!!!!!
+  // CALLED on button press - only does stuff if state is Select
+  if (global.dc_state != DC_STATE_USER_SELECT) return;
+
+  // 0=None 1=Drone 2=Missile 3=Human 4=Laser 5=Enemy
+  if ((which < 1) || (which > 4)) return;
+  global.dc_object_selected = which;
+
+  // Report object selected
+  dc_i_fsm(DC_EVENT_OBJECT_SELECTED);
+}
+
+
+//
+// THINGS LEFT TO DO:
+//
+// 1. Figure out location of drone/human etc dynamically from room config
+// 2. Figure out monster locations dynamically (2 flavours)
+// 3. Add logic to animate monsters somewhat - just head to human if space avail
+// 4. Add turn taking, player->monsters->player->monsters
+// 5. Add player getting movement plus action in one turn
+// 6. SelectionLine should be configurable to disallow going thru walls etc
+// 7. Add smart monster movement - melee vs ranged grids - update post player turn
+// 8. Add collision/end game detection logic

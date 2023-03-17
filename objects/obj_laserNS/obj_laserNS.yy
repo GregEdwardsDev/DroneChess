@@ -26,8 +26,8 @@
   "properties": [],
   "solid": false,
   "spriteId": {
-    "name": "spr_laserNS",
-    "path": "sprites/spr_laserNS/spr_laserNS.yy",
+    "name": "spr_buttonlaserOff",
+    "path": "sprites/spr_buttonlaserOff/spr_buttonlaserOff.yy",
   },
   "spriteMaskId": null,
   "visible": true,

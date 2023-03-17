@@ -2,7 +2,12 @@
   "resourceType": "GMObject",
   "resourceVersion": "1.0",
   "name": "obj_buttonlaser",
-  "eventList": [],
+  "eventList": [
+    {"resourceType":"GMEvent","resourceVersion":"1.0","name":"","collisionObjectId":null,"eventNum":10,"eventType":6,"isDnD":false,},
+    {"resourceType":"GMEvent","resourceVersion":"1.0","name":"","collisionObjectId":null,"eventNum":11,"eventType":6,"isDnD":false,},
+    {"resourceType":"GMEvent","resourceVersion":"1.0","name":"","collisionObjectId":null,"eventNum":7,"eventType":6,"isDnD":false,},
+    {"resourceType":"GMEvent","resourceVersion":"1.0","name":"","collisionObjectId":null,"eventNum":8,"eventType":6,"isDnD":false,},
+  ],
   "managed": true,
   "overriddenProperties": [],
   "parent": {
@@ -26,8 +31,8 @@
   "properties": [],
   "solid": false,
   "spriteId": {
-    "name": "spr_buttonlaserOn",
-    "path": "sprites/spr_buttonlaserOn/spr_buttonlaserOn.yy",
+    "name": "spr_buttonlaserOff",
+    "path": "sprites/spr_buttonlaserOff/spr_buttonlaserOff.yy",
   },
   "spriteMaskId": null,
   "visible": true,
