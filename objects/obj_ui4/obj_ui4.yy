@@ -26,8 +26,8 @@
   "properties": [],
   "solid": false,
   "spriteId": {
-    "name": "spr_ui4FinishTurnNew",
-    "path": "sprites/spr_ui4FinishTurnNew/spr_ui4FinishTurnNew.yy",
+    "name": "spr_ui4off",
+    "path": "sprites/spr_ui4off/spr_ui4off.yy",
   },
   "spriteMaskId": null,
   "visible": true,
