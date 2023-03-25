@@ -508,7 +508,8 @@ function dc_p_fsm_game_end(dc_event) {
 // Fixup enemies nxt_gx/gy
 function dc_p_fsm_update_enemies() {
   var n_to_animate = 0;
-  for (var etyp = DC_OBJECT_ENEMY1; etyp <= DC_OBJECT_ENEMY2; etyp++) {
+  // Do ENEMY2 first - they're nastier!
+  for (var etyp = DC_OBJECT_ENEMY2; etyp >= DC_OBJECT_ENEMY1; etyp--) {
     var i = 0;
     while (true) {
       var monst = dc_p_find_instance(etyp, i);
@@ -593,9 +594,10 @@ function dc_p_set_speed_direction(spd) {
 function dc_p_find_enemy_best_path(dca_monst, dca_array, ctrl) {
   var gx = dca_monst.dci_now_gx;
   var gy = dca_monst.dci_now_gy;
+  var original_range = dca_array[@ gx, gy];
+  var smallest_range = original_range;
   var smallest_range_gx = -1;
   var smallest_range_gy = -1;
-  var smallest_range = 9999;
   for (var dx = -1; dx <= 1; dx++) {
     for (var dy = -1; dy <= 1; dy++) {
       if ((dx == 0) && (dy == 0)) continue;
@@ -616,9 +618,11 @@ function dc_p_find_enemy_best_path(dca_monst, dca_array, ctrl) {
       }
     }
   }
-  if (smallest_range == 9999) return false;
+  if (smallest_range == original_range) return false;
   dca_monst.dci_nxt_gx = smallest_range_gx;
   dca_monst.dci_nxt_gy = smallest_range_gy;
+  // Put large value into nxt pos so no other monster can move into it
+  dca_array[@ dca_monst.dci_nxt_gx, dca_monst.dci_nxt_gy] = 9999999;
   return true;
 }
 function dc_p_update_enemy_nxt(dca_monst) {
