@@ -33,6 +33,7 @@
   },
   "resources": [
     {"id":{"name":"obj_wallNSW","path":"objects/obj_wallNSW/obj_wallNSW.yy",},"order":0,},
+    {"id":{"name":"obj_wall","path":"objects/obj_wall/obj_wall.yy",},"order":0,},
     {"id":{"name":"spr_enemymelee2","path":"sprites/spr_enemymelee2/spr_enemymelee2.yy",},"order":0,},
     {"id":{"name":"spr_buttonlaserOff","path":"sprites/spr_buttonlaserOff/spr_buttonlaserOff.yy",},"order":0,},
     {"id":{"name":"spr_dronelaserfireS","path":"sprites/spr_dronelaserfireS/spr_dronelaserfireS.yy",},"order":0,},

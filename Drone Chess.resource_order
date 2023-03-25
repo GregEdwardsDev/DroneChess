@@ -17,6 +17,7 @@
   ],
   "ResourceOrderSettings": [
     {"name":"obj_wallNSW","order":20,"path":"objects/obj_wallNSW/obj_wallNSW.yy",},
+    {"name":"obj_wall","order":40,"path":"objects/obj_wall/obj_wall.yy",},
     {"name":"spr_enemymelee2","order":84,"path":"sprites/spr_enemymelee2/spr_enemymelee2.yy",},
     {"name":"spr_buttonlaserOff","order":85,"path":"sprites/spr_buttonlaserOff/spr_buttonlaserOff.yy",},
     {"name":"spr_dronelaserfireS","order":66,"path":"sprites/spr_dronelaserfireS/spr_dronelaserfireS.yy",},
