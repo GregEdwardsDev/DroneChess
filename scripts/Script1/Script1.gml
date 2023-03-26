@@ -132,6 +132,18 @@ function dc_p_make_object_grid() {
     }
   }
 }
+function dc_p_make_limit_obj_masks() {
+  for (var i = 0; i < 16; i++) global.dcg_limit_obj_mask[i] = (1<<DC_OBJECT_WALL);
+  var enemies = (1<<DC_OBJECT_ENEMY1) | (1<<DC_OBJECT_ENEMY2);
+  global.dcg_limit_obj_mask[DC_OBJECT_DRONE] = (1<<DC_OBJECT_HUMAN) | (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_MOUSE) | enemies;
+  global.dcg_limit_obj_mask[DC_OBJECT_MISSILE] = (1<<DC_OBJECT_HUMAN) | (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_MOUSE);
+  global.dcg_limit_obj_mask[DC_OBJECT_HUMAN] = (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_MOUSE) | enemies;
+  global.dcg_limit_obj_mask[DC_OBJECT_LASER] = 0;
+}
+function dc_p_make_max_distances() {
+  for (var i = 0; i < 16; i++) global.dcg_max_distance[i] = 999;
+  global.dcg_max_distance[DC_OBJECT_HUMAN] = 3;
+}
 
 //
 // FUNCTIONS TO MAKE RANGE GRIDS
@@ -224,6 +236,21 @@ function dc_p_range_grid_populate(dca_array, dca_list, val) {
   if (listThis != dca_list) ds_list_destroy(listThis);
   ds_list_destroy(listNext);
 }
+function dc_p_range_grid_enemyinvalidate(dca_array) {
+  for (var etyp = DC_OBJECT_ENEMY2; etyp >= DC_OBJECT_ENEMY1; etyp--) {
+    var i = 0;
+    while (true) {
+      var monst = dc_p_find_instance(etyp, i);
+      if (monst == noone) break;
+      with (monst) {
+        // Make range of enemy current cell v.big to prevent selection
+        // (actual range will be restored if enemy moves off gx/gy)
+        dca_array[@ dci_now_gx, dci_now_gy] += 9000000;
+      }
+      i++;
+    }
+  }
+}
 
 // Make dcg_range_grid1 used by DC_OBJECT_ENEMY1(melee) to move closer to human
 function dc_p_make_range_grid1() {
@@ -236,6 +263,8 @@ function dc_p_make_range_grid1() {
   // Use list to set neighouring cells to 1, then neighbours of the 1 cells to 2, and so on
   dc_p_range_grid_populate(global.dcg_range_grid1, list0, 1);
   ds_list_destroy(list0);
+  // Prevent enemy locations being valid locations to move to
+  dc_p_range_grid_enemyinvalidate(global.dcg_range_grid1);
 }
 // Make dcg_range_grid2 used by DC_OBJECT_ENEMY2(projectile) to move closer to any
 // horizontal/vertical/diagonal line that has visibility of human
@@ -252,6 +281,8 @@ function dc_p_make_range_grid2() {
   // Use list to set neighouring cells to 2, then neighbours of the 2 cells to 3, and so on
   dc_p_range_grid_populate(global.dcg_range_grid2, list1, 2);
   ds_list_destroy(list1);
+  // Prevent enemy locations being valid locations to move to
+  dc_p_range_grid_enemyinvalidate(global.dcg_range_grid2);
 }
 
 
@@ -259,6 +290,8 @@ function dc_p_initialise() {
   dc_p_find_objects();
   dc_p_find_walls();
   dc_p_make_tile_grid();
+  dc_p_make_limit_obj_masks();
+  dc_p_make_max_distances();
   dc_p_make_object_grid();
   dc_p_button_all(true);  // Set all buttons available
 }
@@ -341,14 +374,15 @@ function dc_p_same_line_021(g0_gx, g0_gy, g1_gx, g1_gy, g2_gx, g2_gy) {
   return dc_p_same_line_012(g0_gx, g0_gy, g2_gx, g2_gy, g1_gx, g1_gy);
 }
 
-function dc_p_find_sel2(mouse_gx, mouse_gy, limited) {
+function dc_p_find_sel2(mouse_gx, mouse_gy, lim_obj_mask, max_distance) {
   global.dcg_sel2_gx = -1;
   global.dcg_sel2_gy = -1;
   if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0)) return false;  // Bail if no sel0
   if (!dc_p_same_line_as_sel0(mouse_gx, mouse_gy)) return false;  // Mouse not on same row/col/diag as sel0
   // Start at global.dcg_sel0
-  // Apply delta_gx delta_gy until find obstacle/mouse (iff sel_line_limited) or find edge grid
+  // Apply delta_gx delta_gy until find obstacle/mouse or find edge grid
   // Set sel2 (may end up SAME as sel0)
+  var steps = 0;
   var delta_gx = dc_p_find_delta(global.dcg_sel0_gx, mouse_gx);
   var delta_gy = dc_p_find_delta(global.dcg_sel0_gy, mouse_gy);
   var tmp_gx = global.dcg_sel0_gx;
@@ -356,21 +390,23 @@ function dc_p_find_sel2(mouse_gx, mouse_gy, limited) {
   var back_one_step = true;
   // show_debug_message("Sel0=[{0},{1}] Delta=[{2},{3}]", global.dcg_sel0_gx, global.dcg_sel0_gy, delta_gx, delta_gy);
   while (true) {
+    steps++;
     tmp_gx += delta_gx;
     tmp_gy += delta_gy;
     if ((tmp_gx < 0) || (tmp_gx >= global.dcg_grid_x_cells) || (tmp_gy < 0) || (tmp_gy >= global.dcg_grid_y_cells)) {
+      // show_debug_message("[{0},{1}] Too far!", tmp_gx, tmp_gy);
       break;  // Gone too far so will go back one step
 
-    } else if (limited) {
-      if ((tmp_gx == mouse_gx) && (tmp_gy == mouse_gy)) {
-        back_one_step = false;  // Got to mouse pos so NO need to go back one step
+    } else {
+      if ((global.dcg_object_grid[tmp_gx, tmp_gy] & lim_obj_mask) != 0) {
+        // If we've got on to a cell containing an invalid object stop and go back one step
+        // show_debug_message("[{0},{1}] Obstacle object {2}", tmp_gx, tmp_gy, (global.dcg_object_grid[tmp_gy, tmp_gy] & lim_obj_mask),
         break;
-      } else {
-        var inst = global.dcg_tile_grid[tmp_gx, tmp_gy];
-        if ((inst != noone) && (inst.object_index == obj_enemymelee)) {  // TODO: !!!!!!!!!!!!!!!!!! FIXME !!!!!!!!!!!!!!!!!
-          // show_debug_message("SAW KNIFE");
-          break;  // Gone too far so will go back one step
-        }
+      } else if ( ((((lim_obj_mask >> DC_OBJECT_MOUSE) & 1) == 1) && (tmp_gx == mouse_gx) && (tmp_gy == mouse_gy)) ||
+                  (steps == max_distance) ) {
+        // show_debug_message("[{0},{1}] Got to MOUSE/MAX!", tmp_gx, tmp_gy);
+        back_one_step = false;  // Got to mouse pos or max distance so NO need to go back one step
+        break;
       }
     }
   }
@@ -442,12 +478,14 @@ function dc_p_fsm_turn_start(dc_event) {
 function dc_p_fsm_user_select(dc_event) {
   if (dc_event == DC_EVENT_ENTER_STATE) {
     dc_p_make_object_grid();  // Track where everything is
+    dc_p_make_range_grid1();  // TODO: REMOVE: HANDY FOR DEBUGGING THOUGH
+    dc_p_make_range_grid2();  // TODO: REMOVE
   }
   if ((dc_event == DC_EVENT_ENTER_STATE) || (dc_event == DC_EVENT_OBJECT_SELECTED)) {
     dc_p_button_all(true);  // All buttons available
     var inst = dc_p_find_instance(global.dcg_object_selected, 0);
     if (inst != noone) {
-      show_debug_message("{0} at [{1},{2}]", dc_p_get_name(global.dcg_object_selected), inst.dci_now_gx, inst.dci_now_gy);
+      // show_debug_message("{0} at [{1},{2}]", dc_p_get_name(global.dcg_object_selected), inst.dci_now_gx, inst.dci_now_gy);
       // Setup selected object gx/gy as sel0_gx/gy
       global.dcg_sel0_gx = inst.dci_now_gx;
       global.dcg_sel0_gy = inst.dci_now_gy;
@@ -575,8 +613,10 @@ function dc_p_set_speed_direction(spd) {
   var nxt_py = global.dcg_grid_min_py + (dci_nxt_gy * global.dcg_grid_cell_height) - global.dcg_grid_cell_height_offset;
   var pdist = point_distance(x, y, nxt_px, nxt_py);
   if (pdist < global.dcg_grid_min_distance) {
+    global.dcg_object_grid[dci_now_gx, dci_now_gy] &= ~(1<<dci_obj_type);
     dci_now_gx = dci_nxt_gx;
     dci_now_gy = dci_nxt_gy;
+    global.dcg_object_grid[dci_now_gx, dci_now_gy] |= (1<<dci_obj_type);
     speed = 0;
   } else {
     speed = min(pdist, spd);  // This stops the object oscillating at its endpoint
@@ -591,10 +631,10 @@ function dc_p_set_speed_direction(spd) {
   return (original_speed > 0) && (speed == 0);  // Return true if stopped on this call
 }
 
-function dc_p_find_enemy_best_path(dca_monst, dca_array, ctrl) {
+function dc_p_find_enemy_best_path(dca_monst, dca_array_a, dca_array_b, ctrl) {
   var gx = dca_monst.dci_now_gx;
   var gy = dca_monst.dci_now_gy;
-  var original_range = dca_array[@ gx, gy];
+  var original_range = dca_array_a[@ gx, gy] % 9000000;
   var smallest_range = original_range;
   var smallest_range_gx = -1;
   var smallest_range_gy = -1;
@@ -604,7 +644,9 @@ function dc_p_find_enemy_best_path(dca_monst, dca_array, ctrl) {
       // For all 8 neighbours
       if ( ((gx + dx) >= 0) && ((gx + dx) < global.dcg_grid_x_cells) &&
            ((gy + dy) >= 0) && ((gy + dy) < global.dcg_grid_y_cells) ) {
-        var range = dca_array[@ gx + dx, gy + dy];
+        var range = dca_array_a[@ gx + dx, gy + dy];
+        // Don't move onto human cell or one containing another enemy
+        if ((range == 0) || (range >= 9000000)) continue;
         if (range < smallest_range) {
           smallest_range_gx = gx + dx;
           smallest_range_gy = gy + dy;
@@ -619,10 +661,14 @@ function dc_p_find_enemy_best_path(dca_monst, dca_array, ctrl) {
     }
   }
   if (smallest_range == original_range) return false;
+  // Restore original range in old gx/gy as now a valid location for a monster move
+  dca_array_a[@ gx, gy] -= 9000000;
+  dca_array_b[@ gx, gy] -= 9000000;
   dca_monst.dci_nxt_gx = smallest_range_gx;
   dca_monst.dci_nxt_gy = smallest_range_gy;
-  // Put large value into nxt pos so no other monster can move into it
-  dca_array[@ dca_monst.dci_nxt_gx, dca_monst.dci_nxt_gy] = 9999999;
+  // Put large range value into new gx/gy to invalidate location
+  dca_array_a[@ dca_monst.dci_nxt_gx, dca_monst.dci_nxt_gy] += 9000000;
+  dca_array_b[@ dca_monst.dci_nxt_gx, dca_monst.dci_nxt_gy] += 9000000;
   return true;
 }
 function dc_p_update_enemy_nxt(dca_monst) {
@@ -634,14 +680,16 @@ function dc_p_update_enemy_nxt(dca_monst) {
     // Here we're using the DC_OBJECT_ENEMY2 grid
     // We get back ok=false if NO best path or if NO *SINGLE* best path
     // in which case we fall through to the DC_OBJECT_ENEMY1 logic below
-    ok2 = dc_p_find_enemy_best_path(dca_monst, global.dcg_range_grid2, DC_CTRL_RETURN_IF_NO_SINGLE_BEST_PATH);
+    ok2 = dc_p_find_enemy_best_path(dca_monst, global.dcg_range_grid2, global.dcg_range_grid1,
+                                    DC_CTRL_RETURN_IF_NO_SINGLE_BEST_PATH);
   }
   if (!ok2) {
     // Here we're using the DC_OBJECT_ENEMY1 grid
     // Pass in ctrl = 0 (DC_CTRL_NONE) for even monsters, 1 (DC_CTRL_USE_FIRST_BEST_PATH) for odd
     // This mean a given monster will, when there are multiple best paths, deterministically
     // select the first one found or the last one found.
-    var ok1 = dc_p_find_enemy_best_path(dca_monst, global.dcg_range_grid1, (dca_monst.dci_which % 2));
+    var ok1 = dc_p_find_enemy_best_path(dca_monst, global.dcg_range_grid1, global.dcg_range_grid2,
+                                        (dca_monst.dci_which % 2));
   }
   with (dca_monst) {
     return ((dci_now_gx != dci_nxt_gx) || (dci_now_gy != dci_nxt_gy));
@@ -701,19 +749,23 @@ function dc_ev_draw_new_selection_line(mouse_px, mouse_py) {
   // Uses global state:
   // 1. dc_sel0_gx|gy - grid pos of active object (ie drone or missile) (may be -1/-1 if no selection)
   // 2. dc_sel1_gx|gy - grid pos of other end of selection line (may be identical to dc_sel0_gx|gy)
-  // 3. dc_sel_line_limited - whether selection line should be limited by walls/obstacles
 
   // Map mouse pixel position to grid position
-  if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0)) return;  // Bail if no sel0
   var mouse_gx = dc_p_get_gx(mouse_px);
   var mouse_gy = dc_p_get_gy(mouse_py);
   if ((mouse_gx < 0) || (mouse_gy < 0)) return;
+  show_debug_message("[{0},{1}]= OBJECTS={2} RANGE={3}/{4}", mouse_gx, mouse_gy,
+                     global.dcg_object_grid[mouse_gx,mouse_gy],
+                     global.dcg_range_grid1[mouse_gx,mouse_gy], global.dcg_range_grid2[mouse_gx,mouse_gy]);
+
+  if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0)) return;  // Bail if no sel0
 
   // If mouse still at sel1, bail, leaving sel1 unchanged
   if ((mouse_gx == global.dcg_sel1_gx) && (mouse_gy == global.dcg_sel1_gy)) return;
 
   // Now we find sel2_gx|gy - a possible NEW position value for sel1_gx|sel1_gy
-  dc_p_find_sel2(mouse_gx, mouse_gy, global.dcg_sel_line_limited);
+  dc_p_find_sel2(mouse_gx, mouse_gy, global.dcg_limit_obj_mask[global.dcg_object_selected],
+                 global.dcg_max_distance[global.dcg_object_selected]);
   // If new sel2 position same as previous sel1 position, bail
   if ((global.dcg_sel2_gx == global.dcg_sel1_gx) && (global.dcg_sel2_gy == global.dcg_sel1_gy)) return;
 
@@ -766,23 +818,22 @@ function dc_ev_select_dest(mouse_px, mouse_py) {
   dc_p_fsm(DC_EVENT_DEST_SELECTED);
 }
 
-function dc_ev_button_action(dc_obj_this, dc_action, dc_spr_on, dc_spr_off, dc_spr_hov, dc_spr_unav) {
+function dc_ev_button_action(dca_obj_this, dca_action, dca_spr_on, dca_spr_off, dca_spr_hov, dca_spr_unav) {
   // Called when any action button clicked - only does stuff if state is USER_SELECT
   if (global.dcg_state != DC_STATE_USER_SELECT) return;
   // Clear any existing selection line
   dc_p_clear_selection_line();
   // Bail if this button's sprite has been set to the 'unavailable' sprite
-  if (sprite_index == dc_spr_unav) return;
+  if (sprite_index == dca_spr_unav) return;
 
-  if (dc_action == DC_ACTION_ENTER) {
-    sprite_index = dc_spr_hov;
+  if (dca_action == DC_ACTION_ENTER) {
+    sprite_index = dca_spr_hov;
 
-  } else if (dc_action == DC_ACTION_CLICK) {
+  } else if (dca_action == DC_ACTION_CLICK) {
     // If clicked object NOT already selected, DO select otherwise DO deselect and go back to selecting DRONE
     var cur_obj_sel = global.dcg_object_selected;
-    var new_obj_sel = (dc_obj_this == cur_obj_sel) ?DC_OBJECT_DRONE :dc_obj_this;
+    var new_obj_sel = (dca_obj_this == cur_obj_sel) ?DC_OBJECT_DRONE :dca_obj_this;
     if (cur_obj_sel != new_obj_sel) {
-      // Setup sel0_gx/gy coords from new object
       var inst = dc_p_find_instance(new_obj_sel, 0);
       if (inst != noone) {
         global.dcg_object_selected = new_obj_sel;
@@ -792,8 +843,8 @@ function dc_ev_button_action(dc_obj_this, dc_action, dc_spr_on, dc_spr_off, dc_s
     }
     dc_p_fsm(DC_EVENT_OBJECT_SELECTED);  // Report object selected
 
-  } else if (dc_action == DC_ACTION_EXIT) {
-    sprite_index = (dc_obj_this == global.dcg_object_selected) ?dc_spr_on :dc_spr_off;
+  } else if (dca_action == DC_ACTION_EXIT) {
+    sprite_index = (dca_obj_this == global.dcg_object_selected) ?dca_spr_on :dca_spr_off;
   }
 }
 
@@ -808,8 +859,11 @@ function dc_ev_button_action(dc_obj_this, dc_action, dc_spr_on, dc_spr_off, dc_s
 //  3. Add logic to animate monsters somewhat - just head to human if space avail - DONE
 //  4. Add turn taking, player->monsters->player->monsters - DONE
 //  5. Add smart monster movement - melee vs ranged grids - update post player turn - DONE
+//  6. SelectionLine should be configurable to disallow going thru walls etc - DONE
+//  6a. Keep bitmap for grid tracking what exists at every gx/gy - update post each move - DONE
+//  6b. Use object-specific bitmask during SelectionLine to limit extent - DONE
+//  6c. Enhance SelectionLine to allow a maximum range extent - DONE
 //
-//  6. SelectionLine should be configurable to disallow going thru walls etc (see 15-17)
 //  7. Add player getting movement plus action in one turn
 //  7a. Grey out unavailable options
 //  7b. Support 'TurnEnd' button
@@ -826,9 +880,6 @@ function dc_ev_button_action(dc_obj_this, dc_action, dc_spr_on, dc_spr_off, dc_s
 // 13. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
 // 14. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
 //
-// 15. Keep bitmap for grid tracking what exists at every gx/gy - update post each move
-// 16. Use object-specific bitmask during SelectionLine to limit extent
-// 17. Enhance SelectionLine to allow a maximum range extent
 
 
 //
