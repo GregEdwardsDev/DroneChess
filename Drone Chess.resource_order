@@ -25,6 +25,7 @@
     {"name":"spr_tilegrey","order":115,"path":"sprites/spr_tilegrey/spr_tilegrey.yy",},
     {"name":"obj_buttonlaser","order":36,"path":"objects/obj_buttonlaser/obj_buttonlaser.yy",},
     {"name":"obj_laserNS","order":31,"path":"objects/obj_laserNS/obj_laserNS.yy",},
+    {"name":"spr_clear","order":128,"path":"sprites/spr_clear/spr_clear.yy",},
     {"name":"spr_missileidle2","order":32,"path":"sprites/spr_missileidle2/spr_missileidle2.yy",},
     {"name":"spr_dronelaserfireNW","order":71,"path":"sprites/spr_dronelaserfireNW/spr_dronelaserfireNW.yy",},
     {"name":"obj_wallNS","order":21,"path":"objects/obj_wallNS/obj_wallNS.yy",},

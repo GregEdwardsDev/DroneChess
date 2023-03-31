@@ -41,6 +41,7 @@
     {"id":{"name":"spr_tilegrey","path":"sprites/spr_tilegrey/spr_tilegrey.yy",},"order":0,},
     {"id":{"name":"obj_buttonlaser","path":"objects/obj_buttonlaser/obj_buttonlaser.yy",},"order":0,},
     {"id":{"name":"obj_laserNS","path":"objects/obj_laserNS/obj_laserNS.yy",},"order":0,},
+    {"id":{"name":"spr_clear","path":"sprites/spr_clear/spr_clear.yy",},"order":0,},
     {"id":{"name":"spr_missileidle2","path":"sprites/spr_missileidle2/spr_missileidle2.yy",},"order":0,},
     {"id":{"name":"spr_dronelaserfireNW","path":"sprites/spr_dronelaserfireNW/spr_dronelaserfireNW.yy",},"order":0,},
     {"id":{"name":"obj_wallNS","path":"objects/obj_wallNS/obj_wallNS.yy",},"order":0,},
