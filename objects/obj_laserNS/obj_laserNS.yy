@@ -2,7 +2,9 @@
   "resourceType": "GMObject",
   "resourceVersion": "1.0",
   "name": "obj_laserNS",
-  "eventList": [],
+  "eventList": [
+    {"resourceType":"GMEvent","resourceVersion":"1.0","name":"","collisionObjectId":null,"eventNum":0,"eventType":3,"isDnD":false,},
+  ],
   "managed": true,
   "overriddenProperties": [],
   "parent": {
@@ -26,8 +28,8 @@
   "properties": [],
   "solid": false,
   "spriteId": {
-    "name": "spr_buttonlaserOff",
-    "path": "sprites/spr_buttonlaserOff/spr_buttonlaserOff.yy",
+    "name": "spr_laserNS",
+    "path": "sprites/spr_laserNS/spr_laserNS.yy",
   },
   "spriteMaskId": null,
   "visible": true,

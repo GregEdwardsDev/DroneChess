@@ -70,11 +70,25 @@ function dc_p_setup_now_xy(dca_obj_type, dca_which) {
   show_debug_message("{0}=[{1},{2}]", dc_p_get_name(dca_obj_type), inst.dci_now_gx, inst.dci_now_gy);
   return inst;
 }
+function dc_p_setup_laser() {
+  // Special logic to construct laser pseudo-object
+  // It gets special sprites to indicate laser fire which need its x/y to get futzed with
+  // Otherwise it follows drone around
+  var laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
+  if (laser != noone) return;  // Just in case room already has one
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  var new_laser_id = instance_create_layer(drone.x, drone.y, "Instances_1", obj_laserNS);
+  var new_laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
+  if (new_laser == noone) return;
+  new_laser.sprite_index = spr_clear;  // Invisible unless firing
+  dc_p_setup_now_xy(DC_OBJECT_LASER, 0);
+}
 
 function dc_p_find_objects() {
   if (global.dcg_objects_found) return;
   // Find drone/missile/human
-  for (var otyp = DC_OBJECT_DRONE; otyp <= DC_OBJECT_HUMAN; otyp++) {
+  for (var otyp = DC_OBJECT_DRONE; otyp <= DC_OBJECT_FIELD; otyp++) {
     dc_p_setup_now_xy(otyp, 0);
   }
   // Find melee enemies
@@ -87,6 +101,7 @@ function dc_p_find_objects() {
   while (dc_p_setup_now_xy(DC_OBJECT_ENEMY2, i2) != noone) {
     i2++;
   }
+  dc_p_setup_laser();
   // TODO: BARF IF DRONE OR HUMAN (or at least 1) MONSTER MISSING!!!
   global.dcg_objects_found = true;
 }
@@ -367,12 +382,12 @@ function dc_p_same_line(dca_g1_gx, dca_g1_gy, dca_g2_gx, dca_g2_gy) {
 function dc_p_same_line_as_sel0(dca_gx, dca_gy) {
   return dc_p_same_line(global.dcg_sel0_gx, global.dcg_sel0_gy, dca_gx, dca_gy);
 }
-function dc_p_direction8(dca_g1_gx, dca_g1_gy, dca_g2_gx, dca_g2_gy) {
+function dc_p_direction8(dca_g1_gx, dca_g1_gy, dca_g2_gx, dca_g2_gy, check_diags=true) {
   // Direction FROM G1 TO G2 - return BAD=0 N=1 NE=2 E=3 SE=4 S=5 SW=6 W=7 NW=8
-  if ((dca_g1_gx < 0) || (dca_g1_gy < 0) || (dca_g2_gx < 0) || (dca_g2_gy < 0)) return 0;  // BAD
+ if ((dca_g1_gx < 0) || (dca_g1_gy < 0) || (dca_g2_gx < 0) || (dca_g2_gy < 0)) return 0;  // BAD
   if (dca_g1_gx == dca_g2_gx) return (dca_g1_gy < dca_g2_gy) ?5 :1;  // S or N
   if (dca_g1_gy == dca_g2_gy) return (dca_g1_gx < dca_g2_gx) ?3 :7;  // E or W
-  if (abs(dca_g1_gx - dca_g2_gx) != abs(dca_g1_gy - dca_g2_gy)) return 0;  // BAD - not same diag
+  if (check_diags && (abs(dca_g1_gx - dca_g2_gx) != abs(dca_g1_gy - dca_g2_gy))) return 0;  // BAD - not same diag
   if ((dca_g1_gx == dca_g2_gx) && (dca_g1_gy == dca_g2_gy)) return 0;  // BAD - identical
   if ((dca_g1_gx < dca_g2_gx) && (dca_g1_gy < dca_g2_gy)) return 4;  // SE
   if ((dca_g1_gx > dca_g2_gx) && (dca_g1_gy > dca_g2_gy)) return 8;  // NW
@@ -465,7 +480,7 @@ function dc_p_find_sel2(dca_mouse_gx, dca_mouse_gy, dca_lim_obj_mask, dca_max_di
 // STATE MACHINE AND STATE UTILITY FUNCTIONS
 //
 function dc_p_fsm_debug(dca_event) {
-  show_debug_message("DEBUG: State={0} Event={1}", global.dcg_state, dca_event);
+  // show_debug_message("DEBUG: State={0} Event={1}", global.dcg_state, dca_event);
 }
 function dc_p_fsm_state_invalid(dca_event) {
   dc_p_fsm_debug(dca_event);
@@ -547,13 +562,13 @@ function dc_p_fsm_user_animate(dca_event) {
   if (dca_event == DC_EVENT_ENTER_STATE) {
     dc_p_button_display(0, 0);  // All buttons greyed
 
-    if ((global.dcg_object_animate == DC_OBJECT_LASER) ||
-        (global.dcg_object_animate == DC_OBJECT_FIELD) ||
+    if ((global.dcg_object_animate == DC_OBJECT_FIELD) ||
         (global.dcg_object_animate == DC_OBJECT_NONE)) {
-      // TODO:FIX - for now if laser/field selected synthesise animate ended
+      // TODO:FIX - for now if field selected synthesise animate ended
       dca_event = DC_EVENT_ANIMATE_ENDED;
     }
   }
+  // Only a single object animating here
   if (dca_event == DC_EVENT_ANIMATE_ENDED) {
     global.dcg_object_animate = DC_OBJECT_NONE;
 
@@ -621,11 +636,15 @@ function dc_p_fsm_game_end(dca_event) {
 
 // Fixup enemies nxt_gx/gy
 function dc_p_fsm_maybe_hit_enemies() {
+  // Only MISSILE and LASER cause enemy hits
+  if ((global.dcg_object_animate != DC_OBJECT_MISSILE) && (global.dcg_object_animate != DC_OBJECT_LASER)) return 0;
+
   var dx = dc_p_get_dx(global.dcg_sel0_gx, global.dcg_sel0_gy, global.dcg_sel1_gx, global.dcg_sel1_gy);
   var dy = dc_p_get_dy(global.dcg_sel0_gx, global.dcg_sel0_gy, global.dcg_sel1_gx, global.dcg_sel1_gy);
   if ((dx == 0) && (dy == 0)) return 0;
-  show_debug_message("HIT [{0},{1}]-->[{2},{3}]  DXY=[{4},{5}]",
-                     global.dcg_sel0_gx, global.dcg_sel0_gy, global.dcg_sel1_gx, global.dcg_sel1_gy, dx, dy);
+
+  // show_debug_message("HIT [{0},{1}]-->[{2},{3}]  DXY=[{4},{5}]",
+  //                    global.dcg_sel0_gx, global.dcg_sel0_gy, global.dcg_sel1_gx, global.dcg_sel1_gy, dx, dy);
   // Go along now/nxt line of animating object looking for enemies - mark them as dying
   var n_hit = 0;
   var tmp_gx = global.dcg_sel0_gx;
@@ -636,9 +655,10 @@ function dc_p_fsm_maybe_hit_enemies() {
     var pinst = global.dcg_inst_grid[tmp_gx, tmp_gy];
     if ((pinst != noone) && (pinst.dci_obj_state == DC_OBJSTATE_ALIVE) &&
         ((pinst.dci_obj_type == DC_OBJECT_ENEMY1) || (pinst.dci_obj_type == DC_OBJECT_ENEMY2))) {
+      // TODO: should allow HUMAN to be hit too - obviously just means GameOver!
       pinst.dci_obj_state = DC_OBJSTATE_DYING;
-      show_debug_message("HIT ENEMY {0} AT [{1},{2}]", pinst.dci_obj_type, tmp_gx, tmp_gy);
       n_hit++;
+      // show_debug_message("HIT ENEMY {0} AT [{1},{2}]", pinst.dci_obj_type, tmp_gx, tmp_gy);
     }
     if ((tmp_gx == global.dcg_sel1_gx) && (tmp_gy == global.dcg_sel1_gy)) break;
     tmp_gx += dx;
@@ -681,7 +701,7 @@ function dc_p_button_debug() {
   var missile = (((global.dcg_button_avail_mask >> DC_ACTION_MISSILE_MOVE) & 1) == 1) ?"MISSILE" :" ";
   var field = (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_FIELD) & 1) == 1) ?"FIELD" :" ";
   var human = (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_HUMAN) & 1) == 1) ?"HUMAN" :" ";
-  show_debug_message("BUTTONS = {0} {1} {2} {3} {4}", drone, laser, missile, field, human);
+  // show_debug_message("BUTTONS = {0} {1} {2} {3} {4}", drone, laser, missile, field, human);
 }
 function dc_p_button_available() {
   dc_p_button_debug();
@@ -762,11 +782,9 @@ function dc_p_button_user_select_begin() {
   global.dcg_object_move = DC_OBJECT_NONE;
   if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_MOVE) & 1) == 1) {
     global.dcg_object_move = DC_OBJECT_DRONE;
-    global.dcg_object_action_prev = global.dcg_object_action;
     global.dcg_object_action = DC_ACTION_DRONE_MOVE;
   } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_LASER) & 1) == 1) {
     global.dcg_object_move = DC_OBJECT_LASER;
-    global.dcg_object_action_prev = global.dcg_object_action;
     global.dcg_object_action = DC_ACTION_DRONE_LASER;
   }
   // Invalidate sel1
@@ -932,13 +950,20 @@ function dc_step_drone() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_DRONE) return;  // Must be animating DRONE
   var stopped = dc_p_set_speed_direction(10, false);
-  if (stopped) dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+  if (!stopped) return;
+  // Fixup laser pseudo-object to be at same gx/gy x/y location as drone
+  var laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
+  if (laser == noone) return;
+  laser.dci_now_gx = dci_now_gx; laser.dci_now_gy = dci_now_gy;
+  laser.x = x; laser.y = y;
+  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 function dc_step_missile() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_MISSILE) return;  // Must be animating MISSILE
   var stopped = dc_p_set_speed_direction(25, true);
-  if (stopped) dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+  if (!stopped) return;
+  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 function dc_step_human() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
@@ -950,23 +975,52 @@ function dc_step_human() {
   dc_p_clear_via(self);
   dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
+
+function dc_step_laser_end() {
+  var laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
+  if (laser == noone) return;
+  // Make laser invisible; also set laser x/y back to drone x/y
+  laser.sprite_index = spr_clear;
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  laser.x = drone.x;
+  laser.y = drone.y;
+  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+}
 function dc_step_laser() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_LASER) return;  // Must be animating LASER
-  var stopped = dc_p_set_speed_direction(100, false);
-  if (stopped) dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+
+  // Clear animate object - we only do a single step here - animation ends on timeout
+  global.dcg_object_animate = DC_OBJECT_NONE;
+
+  // Find direction of fire and set correct sprite
+  // We have to futz with LASER x/y to make it look like spr_laserXX starts at right pos
+  //
+  // Direction FROM now TO nxt - BAD=0 N=1 NE=2 E=3 SE=4 S=5 SW=6 W=7 NW=8
+  // NB. Final false param tells dc_p_direction8 to not check that now/nxt on same diag
+  var dir = dc_p_direction8(dci_now_gx, dci_now_gy, dci_nxt_gx, dci_nxt_gy, false);
+  // show_debug_message("dc_step_laser  now=[{0},{1}] nxt=[{2},{3}] dir={4}",
+  //                    dci_now_gx, dci_now_gy, dci_nxt_gx, dci_nxt_gy, dir);
+  switch (dir) {
+    case 4: sprite_index = spr_laserBSlash;                     x += 16; y += 16; break;
+    case 8: sprite_index = spr_laserBSlash; x -= 384; y -= 384; x += 16; y += 16; break;
+    case 2: sprite_index = spr_laserSlash;  y -= 384;           x += 16; y += 16; break;
+    case 6: sprite_index = spr_laserSlash;  x -= 384;           x += 16; y += 16; break;
+    case 1: sprite_index = spr_laserVertic; x -= 192; y -= 640; x += 16; y += 16; break;
+    case 5: sprite_index = spr_laserVertic; x -= 192;           x += 16; y += 16; break;
+    case 7: sprite_index = spr_laserHoriz;  x -= 384; y -= 320; x += 16; y += 24; break;
+    case 3: sprite_index = spr_laserHoriz;            y -= 320; x += 16; y += 24; break;
+    default: break;
+  }
+  var tmp = call_later(2, time_source_units_seconds, dc_step_laser_end);  // 2 sec animation
 }
 function dc_step_field() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_FIELD) return;  // Must be animating FIELD
   var stopped = dc_p_set_speed_direction(10, false);
-  if (stopped) dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
-}
-function dc_step_enemy_PREV() {
-  if (global.dcg_state != DC_STATE_ENEMY_ANIMATE) return;  // Must be in STATE EnemyAnimate
-  // if (global.dcg_object_animate != DC_OBJECT_ENEMY1) return;
-  var stopped = dc_p_set_speed_direction(1, false);
-  if (stopped) dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+  if (!stopped) return;
+  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 function dc_step_enemy() {
   if ((global.dcg_state == DC_STATE_USER_ANIMATE_HIT) && (self.dci_obj_state == DC_OBJSTATE_DYING)) {
@@ -993,7 +1047,6 @@ function dc_step_enemy() {
 
 
 
-
 //
 // EVENT HANDLERS and EVENT HANDLER UTILITY FUNCTIONS
 //
@@ -1016,9 +1069,9 @@ function dc_ev_draw_new_selection_line(dca_mouse_px, dca_mouse_py) {
   var mouse_gx = dc_p_get_gx(dca_mouse_px);
   var mouse_gy = dc_p_get_gy(dca_mouse_py);
   if ((mouse_gx < 0) || (mouse_gy < 0)) return;
-  show_debug_message("[{0},{1}]= OBJECTS={2} RANGE={3}/{4}", mouse_gx, mouse_gy,
-                     global.dcg_object_grid[mouse_gx,mouse_gy],
-                     global.dcg_range_grid1[mouse_gx,mouse_gy], global.dcg_range_grid2[mouse_gx,mouse_gy]);
+  // show_debug_message("[{0},{1}]= OBJECTS={2} RANGE={3}/{4}", mouse_gx, mouse_gy,
+  //                   global.dcg_object_grid[mouse_gx,mouse_gy],
+  //                   global.dcg_range_grid1[mouse_gx,mouse_gy], global.dcg_range_grid2[mouse_gx,mouse_gy]);
 
   if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0)) return;  // Bail if no sel0
 
@@ -1058,6 +1111,19 @@ function dc_ev_draw_new_selection_line(dca_mouse_px, dca_mouse_py) {
   global.dcg_sel1_gy = global.dcg_sel2_gy;
 }
 
+
+
+function dc_ev_select_dest_human(dca_human, dca_mouse_px, dca_mouse_py) {
+  // Human goes via drone gx/gy before going to sel1 gx/gy
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  dca_human.dci_nxt_gx = drone.dci_now_gx;
+  dca_human.dci_nxt_gy = drone.dci_now_gy;
+  dca_human.dci_via_gx[0] = drone.dci_now_gx;
+  dca_human.dci_via_gy[0] = drone.dci_now_gy;
+  dca_human.dci_via_gx[1] = global.dcg_sel1_gx;
+  dca_human.dci_via_gy[1] = global.dcg_sel1_gy;
+}
 function dc_ev_select_dest(dca_mouse_px, dca_mouse_py) {
   // Called on mouse release if on tile NOT on button - only does stuff if state is USER_SELECT
   if (global.dcg_state != DC_STATE_USER_SELECT) return;
@@ -1074,20 +1140,9 @@ function dc_ev_select_dest(dca_mouse_px, dca_mouse_py) {
   // Setup nxt_gx/gy coords from sel1_gx/gy
   var inst = dc_p_find_instance(global.dcg_object_move, 0);
   if (inst != noone) {
-    inst.dci_nxt_gx = global.dcg_sel1_gx;
-    inst.dci_nxt_gy = global.dcg_sel1_gy;
-
-    if (inst.dci_obj_type == DC_OBJECT_HUMAN) {
-      // ... but human goes via DRONE gx/gy before going to sel1 gx/gy
-      var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
-      if (drone != noone) {
-        inst.dci_nxt_gx = drone.dci_now_gx;
-        inst.dci_nxt_gy = drone.dci_now_gy;
-        inst.dci_via_gx[0] = drone.dci_now_gx;
-        inst.dci_via_gy[0] = drone.dci_now_gy;
-        inst.dci_via_gx[1] = global.dcg_sel1_gx;
-        inst.dci_via_gy[1] = global.dcg_sel1_gy;
-      }
+    switch (inst.dci_obj_type) {
+      case DC_OBJECT_HUMAN: dc_ev_select_dest_human(inst, dca_mouse_px, dca_mouse_py); break;
+      default: inst.dci_nxt_gx = global.dcg_sel1_gx; inst.dci_nxt_gy = global.dcg_sel1_gy; break;
     }
   }
   // Report destination selected
@@ -1162,7 +1217,6 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 //
 // BUGS:
 //  A. MissileMove is an ACTION!
-//  B. Missile/Laser will kill HUMAN
 //
 //
 // THINGS DONE:
@@ -1185,20 +1239,28 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 // 12a. Grey out unavailable options - DONE
 // 12b. Disallow human/field on consecutive turns - DONE
 // 13. Add pseudo collision logic - DONE
+// 14. Laser animation - DONE
 //
 // THINGS LEFT TO DO:
-// 14a. Support 'TurnEnd' button
-// 14b. Handle missile/drone at same location - use invisible missile sprite if so
-// 14c. Allow extra missile move if initial deploy from drone
-// 15. Enemies should use either field-aware range maps or field-oblivious range maps
+// 15a. Support 'TurnEnd' button
+// 15b. Handle missile/drone at same location - use invisible missile sprite if so
+// 15c. Allow extra missile move if initial deploy from drone
 //
-// 16. Add end game detection logic
-// 17. Add README
+// 16. ProjectileEnemies move and fire in a turn
+// 16a. They will fire at human or drone if on same line - bullets blocked by field though
+//
+// 17. Allow human to be hit by missile/laser ==> GameOver!
+// 18. Stop laser fire 'escaping' into UI
+//
+// 19. Terminology - Game > Level > Round > PlayerTurn(N) EnemyTurn(1)
+// 20. Add in AnimationEnd Event to stop monster 'dying' animation
+// 21. Add end game detection logic
+// 22. Add README
 //
 // MAYBE:
-// 18. Use int64
-// 19. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
-// 20. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
+// 23. Use int64
+// 24. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
+// 25. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
 //
 
 

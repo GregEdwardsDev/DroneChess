@@ -93,7 +93,6 @@ global.dcg_enemies_dying = 0;
 #macro DC_ACTION_DRONE_FIELD  13
 #macro DC_ACTION_DRONE_HUMAN  14
 #macro DC_ACTION_MISSILE_MOVE 15
-global.dcg_object_action_prev = DC_ACTION_NONE;
 global.dcg_object_action = DC_ACTION_NONE;
 
 // Turn counter - incremented on turn start so first turn is turn 1
