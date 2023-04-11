@@ -44,8 +44,9 @@ global.dcg_sel2_gy = -1;
 #macro DC_STATE_USER_ANIMATE 4
 #macro DC_STATE_USER_ANIMATE_HIT 5
 #macro DC_STATE_ENEMY_ANIMATE 6
-#macro DC_STATE_TURN_END 7
-#macro DC_STATE_GAME_END 8
+#macro DC_STATE_ENEMY_ANIMATE_BULLETS 7
+#macro DC_STATE_TURN_END 8
+#macro DC_STATE_GAME_END 9
 global.dcg_state = DC_STATE_NONE;
 
 // EVENTS: 0=None 1=EnterState 2=ObjectSelected 3=DestSelected 4=TurnFinished 5=AnimateEnded
