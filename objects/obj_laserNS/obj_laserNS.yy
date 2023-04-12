@@ -27,10 +27,7 @@
   "physicsStartAwake": true,
   "properties": [],
   "solid": false,
-  "spriteId": {
-    "name": "spr_laserNS",
-    "path": "sprites/spr_laserNS/spr_laserNS.yy",
-  },
+  "spriteId": null,
   "spriteMaskId": null,
   "visible": true,
 }
