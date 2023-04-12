@@ -1135,22 +1135,19 @@ function dc_step_field() {
   sprite_index = spr_fieldedtile;
   dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
+function dc_step_enemy_end() {
+  if ((global.dcg_state == DC_STATE_USER_ANIMATE_HIT) && (dci_obj_state == DC_OBJSTATE_DYING)) {
+    // Called on amimate end event
+    dci_obj_state = DC_OBJSTATE_DEAD;
+    if      (sprite_index == spr_enemymeleedying)      sprite_index = spr_enemymeleedead;
+    else if (sprite_index == spr_enemyprojectiledying) sprite_index = spr_enemyprojectiledead;
+    dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+  }
+}
 function dc_step_enemy() {
-  if ((global.dcg_state == DC_STATE_USER_ANIMATE_HIT) && (self.dci_obj_state == DC_OBJSTATE_DYING)) {
-    self.dci_step++;
-    if ((self.dci_step % 20) != 0) return;
-    // Doing enemy HIT->DYING->DEAD animation
-    // TODO:FIX For now just do a weird sprite sequence
-    switch (self.sprite_index) {
-      case spr_enemymelee:              self.sprite_index = spr_enemymeleeback; break;
-      case spr_enemymeleeback:          self.sprite_index = spr_enemymelee2; break;
-      case spr_enemyprojectileidle:     self.sprite_index = spr_enemyprojectileidleback; break;
-      case spr_enemyprojectileidleback: self.sprite_index = spr_enemymelee2; break;
-      case spr_enemymelee2:
-        self.dci_obj_state = DC_OBJSTATE_DEAD;
-        dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
-        break;
-    }
+  if ((global.dcg_state == DC_STATE_USER_ANIMATE_HIT) && (dci_obj_state == DC_OBJSTATE_DYING)) {
+    sprite_index = (dci_obj_type == DC_OBJECT_ENEMY1) ?spr_enemymeleedying :spr_enemyprojectiledying;
+
   } else if ((global.dcg_state == DC_STATE_ENEMY_ANIMATE) && (self.dci_obj_state == DC_OBJSTATE_ALIVE)) {
     // Moving enemy towards human
     var stopped = dc_p_set_speed_direction(1, false);
