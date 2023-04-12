@@ -38,18 +38,19 @@ function dc_p_find_instance(dca_obj_type, dca_which) {
     case DC_OBJECT_MISSILE: return instance_find(obj_missile, dca_which);
     case DC_OBJECT_HUMAN:   return instance_find(obj_humanidle, dca_which);
     case DC_OBJECT_LASER:   return instance_find(obj_laserNS, dca_which);
-      // case DC_OBJECT_FIELD:   return instance_find(obj_field, dca_which);  // TODO: add field
+    case DC_OBJECT_FIELD:   return instance_find(obj_field, dca_which);
     case DC_OBJECT_ENEMY1:  return instance_find(obj_enemymelee, dca_which);
     case DC_OBJECT_ENEMY2:  return instance_find(obj_enemyprojectile, dca_which);
     case DC_OBJECT_WALL:    return instance_find(obj_wall, dca_which);
     default:                return noone;
   }
 }
-function dc_p_setup_nxt_xy(dca_obj_type, dca_which, gx, gy) {
+
+function dc_p_setup_nxt_xy(dca_obj_type, dca_which, dca_gx, dca_gy) {
   var inst = dc_p_find_instance(dca_obj_type, dca_which);
   if (inst == noone) return noone;
-  inst.dci_nxt_gx = gx;
-  inst.dci_nxt_gy = gy;
+  inst.dci_nxt_gx = dca_gx;
+  inst.dci_nxt_gy = dca_gy;
   return inst;
 }
 function dc_p_setup_now_xy(dca_obj_type, dca_which) {
@@ -70,20 +71,32 @@ function dc_p_setup_now_xy(dca_obj_type, dca_which) {
   show_debug_message("{0}=[{1},{2}]", dc_p_get_name(dca_obj_type), inst.dci_now_gx, inst.dci_now_gy);
   return inst;
 }
+function dc_p_setup_pseudo_object(dca_obj_type, dca_gm_obj_type, dca_px, dca_py) {
+  // Special logic to construct pseudo-objects
+  var pobj = dc_p_find_instance(dca_obj_type, 0);
+  if (pobj != noone) return;  // Just in case room already has one
+  var new_pobj_id = instance_create_layer(dca_px, dca_py, "Instances_1", dca_gm_obj_type);
+  var new_pobj = dc_p_find_instance(dca_obj_type, 0);
+  if (new_pobj == noone) return;
+  new_pobj.sprite_index = spr_clear;  // Invisible initially
+  dc_p_setup_now_xy(dca_obj_type, 0);
+}
 function dc_p_setup_laser() {
   // Special logic to construct laser pseudo-object
   // It gets special sprites to indicate laser fire which need its x/y to get futzed with
   // Otherwise it follows drone around
-  var laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
-  if (laser != noone) return;  // Just in case room already has one
   var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
   if (drone == noone) return;
-  var new_laser_id = instance_create_layer(drone.x, drone.y, "Instances_1", obj_laserNS);
-  var new_laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
-  if (new_laser == noone) return;
-  new_laser.sprite_index = spr_clear;  // Invisible unless firing
-  dc_p_setup_now_xy(DC_OBJECT_LASER, 0);
+  dc_p_setup_pseudo_object(DC_OBJECT_LASER, obj_laserNS, drone.x, drone.y);
 }
+function dc_p_setup_field() {
+  // Special logic to construct field pseudo-object
+  // Normally it just follows drone around
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  dc_p_setup_pseudo_object(DC_OBJECT_FIELD, obj_field, drone.x, drone.y);
+}
+
 
 function dc_p_find_objects() {
   if (global.dcg_objects_found) return;
@@ -102,7 +115,8 @@ function dc_p_find_objects() {
     i2++;
   }
   dc_p_setup_laser();
-  // TODO: BARF IF DRONE OR HUMAN (or at least 1) MONSTER MISSING!!!
+  dc_p_setup_field();
+  // TODO: BARF IF DRONE OR HUMAN or MONSTER(S) MISSING!!!
   global.dcg_objects_found = true;
 }
 function dc_p_find_walls() {
@@ -286,6 +300,15 @@ function dc_p_range_grid_enemyinvalidate(dca_array) {
     }
   }
 }
+function dc_p_range_grid_fieldinvalidate(dca_array) {
+  var field = dc_p_find_instance(DC_OBJECT_FIELD, 0);
+  if ((field == noone) || (field.sprite_index == spr_clear)) return;
+  with (field) {
+    // Make range of active field current cell = 0 to prevent selection
+    // and to 'freeze' any monster currently on it
+    dca_array[@ dci_now_gx, dci_now_gy] = 0;
+  }
+}
 
 // Make dcg_range_grid1 used by DC_OBJECT_ENEMY1(melee) to move closer to human
 function dc_p_make_range_grid1() {
@@ -300,6 +323,8 @@ function dc_p_make_range_grid1() {
   ds_list_destroy(list0);
   // Prevent enemy locations being valid locations to move to
   dc_p_range_grid_enemyinvalidate(global.dcg_range_grid1);
+  // Prevent field being a valid location to move to
+  dc_p_range_grid_fieldinvalidate(global.dcg_range_grid1);
 }
 // Make dcg_range_grid2 used by DC_OBJECT_ENEMY2(projectile) to move closer to any
 // horizontal/vertical/diagonal line that has visibility of human
@@ -318,6 +343,8 @@ function dc_p_make_range_grid2() {
   ds_list_destroy(list1);
   // Prevent enemy locations being valid locations to move to
   dc_p_range_grid_enemyinvalidate(global.dcg_range_grid2);
+  // Prevent field being a valid location to move to
+  dc_p_range_grid_fieldinvalidate(global.dcg_range_grid1);
 }
 function dc_p_make_range_grids() {
   dc_p_make_range_grid1();
@@ -489,15 +516,16 @@ function dc_p_fsm_state_invalid(dca_event) {
 function dc_p_fsm(dca_event) {
   dc_p_fsm_debug(dca_event);
   switch (global.dcg_state) {
-    case DC_STATE_GAME_START:       dc_p_fsm_game_start(dca_event); return;
-    case DC_STATE_TURN_START:       dc_p_fsm_turn_start(dca_event); return;
-    case DC_STATE_USER_SELECT:      dc_p_fsm_user_select(dca_event); return;
-    case DC_STATE_USER_ANIMATE:     dc_p_fsm_user_animate(dca_event); return;
-    case DC_STATE_USER_ANIMATE_HIT: dc_p_fsm_user_animate_hit(dca_event); return;
-    case DC_STATE_ENEMY_ANIMATE:    dc_p_fsm_enemy_animate(dca_event); return;
-    case DC_STATE_TURN_END:         dc_p_fsm_turn_end(dca_event); return;
-    case DC_STATE_GAME_END:         dc_p_fsm_game_end(dca_event); return;
-    default: dc_p_fsm_state_invalid(dca_event); return;
+    case DC_STATE_GAME_START:            dc_p_fsm_game_start(dca_event); return;
+    case DC_STATE_TURN_START:            dc_p_fsm_turn_start(dca_event); return;
+    case DC_STATE_USER_SELECT:           dc_p_fsm_user_select(dca_event); return;
+    case DC_STATE_USER_ANIMATE:          dc_p_fsm_user_animate(dca_event); return;
+    case DC_STATE_USER_ANIMATE_HIT:      dc_p_fsm_user_animate_hit(dca_event); return;
+    case DC_STATE_ENEMY_ANIMATE:         dc_p_fsm_enemy_animate(dca_event); return;
+    case DC_STATE_ENEMY_ANIMATE_BULLETS: dc_p_fsm_enemy_animate_bullets(dca_event); return;
+    case DC_STATE_TURN_END:              dc_p_fsm_turn_end(dca_event); return;
+    case DC_STATE_GAME_END:              dc_p_fsm_game_end(dca_event); return;
+    default:                             dc_p_fsm_state_invalid(dca_event); return;
   }
 }
 function dc_p_fsm_set_state(dc_new_state) {
@@ -562,9 +590,7 @@ function dc_p_fsm_user_animate(dca_event) {
   if (dca_event == DC_EVENT_ENTER_STATE) {
     dc_p_button_display(0, 0);  // All buttons greyed
 
-    if ((global.dcg_object_animate == DC_OBJECT_FIELD) ||
-        (global.dcg_object_animate == DC_OBJECT_NONE)) {
-      // TODO:FIX - for now if field selected synthesise animate ended
+    if (global.dcg_object_animate == DC_OBJECT_NONE) {
       dca_event = DC_EVENT_ANIMATE_ENDED;
     }
   }
@@ -602,20 +628,40 @@ function dc_p_fsm_enemy_animate(dca_event) {
     dc_p_make_object_grid();  // Track where everything is
     dc_p_make_range_grids();
 
-    global.dcg_objects_animating = dc_p_fsm_reposition_enemies();
+    global.dcg_objects_animating = dc_p_fsm_enemies_reposition();
 
     if (global.dcg_objects_animating > 0) {
       // Some enemies to animate
       global.dcg_object_animate = DC_OBJECT_ENEMY1;
     } else {
-      // No enemies to animate - turn is over
+      // No enemies to animate - animate bullets?
+      dc_p_fsm_set_state(DC_STATE_TURN_END);
+    }
+  }
+  if (dca_event == DC_EVENT_ANIMATE_ENDED) {
+    global.dcg_objects_animating--;
+    // show_debug_message("NUM ENEMIES STILL ANIMATING = {0}", global.dcg_objects_animating);
+    if (global.dcg_objects_animating == 0) {
+      // Enemies finished animating - animate bullets
+      dc_p_fsm_set_state(DC_STATE_ENEMY_ANIMATE_BULLETS);
+    }
+  }
+}
+function dc_p_fsm_enemy_animate_bullets(dca_event) {
+  if (dca_event == DC_EVENT_ENTER_STATE) {
+
+    global.dcg_objects_animating = dc_p_fsm_enemies_fire();
+    // show_debug_message("NUM ENEMIES FIRING = {0}", global.dcg_objects_animating);
+
+    if (global.dcg_objects_animating == 0) {
+      // No enemy bullets to animate - turn is over
       dc_p_fsm_set_state(DC_STATE_TURN_END);
     }
   }
   if (dca_event == DC_EVENT_ANIMATE_ENDED) {
     global.dcg_objects_animating--;
     if (global.dcg_objects_animating == 0) {
-      // Enemies finished animating - turn is over
+      // Enemy bullets finished animating - turn is over
       dc_p_fsm_set_state(DC_STATE_TURN_END);
     }
   }
@@ -623,6 +669,8 @@ function dc_p_fsm_enemy_animate(dca_event) {
 function dc_p_fsm_turn_end(dca_event) {
   if (dca_event == DC_EVENT_ENTER_STATE) {
     global.dcg_object_animate = DC_OBJECT_NONE;
+    // Reset any field
+    dc_p_fsm_reset_field();
     // Loop back to start
     dc_p_button_turn_end_begin();
     dc_p_fsm_set_state(DC_STATE_TURN_START);
@@ -667,7 +715,7 @@ function dc_p_fsm_maybe_hit_enemies() {
   return n_hit;  // Count of enemies that will need HIT animation
 }
 // Fixup enemies nxt_gx/gy
-function dc_p_fsm_reposition_enemies() {
+function dc_p_fsm_enemies_reposition() {
   var n_to_animate = 0;
   // Do ENEMY2 first - they're nastier!
   for (var etyp = DC_OBJECT_ENEMY2; etyp >= DC_OBJECT_ENEMY1; etyp--) {
@@ -682,6 +730,29 @@ function dc_p_fsm_reposition_enemies() {
     }
   }
   return n_to_animate;  // Count of enemies that will animate
+}
+function dc_p_fsm_enemies_fire() {
+  var n_to_animate = 0;
+  var i = 0;
+  while (true) {
+    var monst = dc_p_find_instance(DC_OBJECT_ENEMY2, i);  // Only ENEMY2
+    if (monst == noone) break;
+    if (monst.dci_obj_state == DC_OBJSTATE_ALIVE) {
+      if (dc_p_enemy_fires_bullet(monst)) n_to_animate++;
+    }
+    i++;
+  }
+  return n_to_animate;  // Count of enemies that will animate
+}
+// Called at end of enemy turn to reset any active field
+function dc_p_fsm_reset_field() {
+  var field = dc_p_find_instance(DC_OBJECT_FIELD, 0);
+  if ((field == noone) || (field.sprite_index == spr_clear)) return;
+  field.sprite_index = spr_clear;
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  field.dci_now_gx = drone.dci_now_gx; field.dci_now_gy = drone.dci_now_gy;
+  field.x = drone.x; field.y = drone.y;
 }
 
 
@@ -793,14 +864,16 @@ function dc_p_button_user_select_begin() {
   dc_p_button_control();
 }
 function dc_p_button_user_animations_complete() {
-  var moves = (1<<DC_ACTION_DRONE_MOVE) | (1<<DC_ACTION_MISSILE_MOVE);
-  var actions = (1<<DC_ACTION_DRONE_LASER) | (1<<DC_ACTION_DRONE_FIELD) | (1<<DC_ACTION_DRONE_HUMAN);
+  var moves = (1<<DC_ACTION_DRONE_MOVE);
+  var actions = (1<<DC_ACTION_MISSILE_MOVE) | (1<<DC_ACTION_DRONE_LASER) |
+      (1<<DC_ACTION_DRONE_FIELD) | (1<<DC_ACTION_DRONE_HUMAN);
 
   // Clear flag corresponding to button used - use of move uses up ALL moves - use of action uses up ALL actions
   switch (global.dcg_object_action) {
-    case DC_ACTION_DRONE_MOVE: case DC_ACTION_MISSILE_MOVE:
+    case DC_ACTION_DRONE_MOVE:
       global.dcg_button_avail_mask &= ~moves;
       break;
+    case DC_ACTION_MISSILE_MOVE:
     case DC_ACTION_DRONE_LASER:
       global.dcg_button_avail_mask &= ~actions;
       break;
@@ -849,36 +922,7 @@ function dc_p_go_via(dca_inst) {
   }
 }
 
-function dc_p_set_speed_direction(dca_spd, dca_kill) {
-  var original_speed = speed;
-  speed = 0;
-  if ((dci_now_gx < 0) || (dci_now_gy < 0) || (dci_nxt_gx < 0) || (dci_nxt_gy < 0)) return (original_speed > 0);
-  if ((dci_now_gx == dci_nxt_gx) && (dci_now_gy == dci_nxt_gy)) return (original_speed > 0);
 
-  var nxt_px = global.dcg_grid_min_px + (dci_nxt_gx * global.dcg_grid_cell_width);
-  var nxt_py = global.dcg_grid_min_py + (dci_nxt_gy * global.dcg_grid_cell_height) - global.dcg_grid_cell_height_offset;
-  var pdist = point_distance(x, y, nxt_px, nxt_py);
-  if (pdist < global.dcg_grid_min_distance) {
-    global.dcg_inst_grid[dci_now_gx, dci_now_gy] = noone;  // Remove from old pos
-    global.dcg_object_grid[dci_now_gx, dci_now_gy] &= ~(1<<dci_obj_type);
-    dci_now_gx = dci_nxt_gx;
-    dci_now_gy = dci_nxt_gy;
-    global.dcg_inst_grid[dci_now_gx, dci_now_gy] = self;  // Place at new pos
-    global.dcg_object_grid[dci_now_gx, dci_now_gy] |= (1<<dci_obj_type);
-    speed = 0;
-  } else {
-    speed = min(pdist, dca_spd);  // This stops the object oscillating at its endpoint
-    direction = point_direction(x, y, nxt_px, nxt_py);
-  }
-
-  // if ((dci_obj_type == DC_OBJECT_ENEMY1) || (dci_obj_type == DC_OBJECT_ENEMY2)) {
-  //   show_debug_message("END: Now=[{0},{1}] Nxt=[{2},{3}]  Dist={4} Speed={5} Inst={6}",
-  //                      dci_now_gx, dci_now_gy, dci_nxt_gx, dci_nxt_gy, pdist, speed, dci_which);
-  //   show_debug_message("END: Now=[{0},{1}] Nxt=[{2},{3}]  Dist={4} Speed={5} Inst={6}",
-  //                      x, y, nxt_px, nxt_py, pdist, speed, dci_which);
-  // }
-  return (original_speed > 0) && (speed == 0);  // Return true if stopped on this call
-}
 
 function dc_p_find_enemy_best_path(dca_monst, dca_array_a, dca_array_b, dca_ctrl) {
   var gx = dca_monst.dci_now_gx;
@@ -887,6 +931,8 @@ function dc_p_find_enemy_best_path(dca_monst, dca_array_a, dca_array_b, dca_ctrl
   var smallest_range = original_range;
   var smallest_range_gx = -1;
   var smallest_range_gy = -1;
+  // If monster is on a cell with range 0 (eg a FIELDed cell) then it is 'frozen' and can not move!
+  if (original_range == 0) return false;
   for (var dx = -1; dx <= 1; dx++) {
     for (var dy = -1; dy <= 1; dy++) {
       if ((dx == 0) && (dy == 0)) continue;
@@ -944,7 +990,73 @@ function dc_p_update_enemy_nxt(dca_monst) {
     return ((dci_now_gx != dci_nxt_gx) || (dci_now_gy != dci_nxt_gy));
   }
 }
+function dc_p_enemy_fires_bullet(dca_monst) {
+  // This function returns true if the enemy fires and 'bullets' need to be animated
+  if ((dca_monst == noone) || (dca_monst.dci_obj_state != DC_OBJSTATE_ALIVE)) return false;
+  // Only projectile enemies(2) fire bullets
+  if (dca_monst.dci_obj_type != DC_OBJECT_ENEMY2) return false;
+  // Quick check - range to human must be 1 for a firing solution
+  var range = global.dcg_range_grid2[dca_monst.dci_now_gx, dca_monst.dci_now_gy] % 9000000;
+  if (range != 1) return false;
+  // Double check monster and human on same line
+  var H = dc_p_find_instance(DC_OBJECT_HUMAN, 0);
+  if (H == noone) return false;
+  if (!dc_p_same_line(dca_monst.dci_now_gx, dca_monst.dci_now_gy, H.dci_now_gx, H.dci_now_gy)) return false;
 
+  // We will be firing!
+  var F = dc_p_find_instance(DC_OBJECT_FIELD, 0);
+  var B = instance_create_layer(dca_monst.x, dca_monst.y, "Instances_1", obj_bullet);
+  if ((F == noone) || (B == noone)) return false;
+  B.dci_obj_state = DC_OBJSTATE_ALIVE;
+  B.dci_obj_type = DC_OBJECT_NONE;
+  B.dci_which = 999;
+  B.dci_now_gx = dc_p_get_object_gx(B.x);
+  B.dci_now_gy = dc_p_get_object_gy(B.y);
+  if (dc_p_same_line_012(B.dci_now_gx, B.dci_now_gy, F.dci_now_gx, F.dci_now_gy,
+                         H.dci_now_gx, H.dci_now_gy)) {
+    // If field F between monster M and human H then bullets stop at field
+    B.dci_nxt_gx = F.dci_now_gx;
+    B.dci_nxt_gy = F.dci_now_gy;
+  } else {
+    // If field F NOT between monster M and human H then bullets stop at human
+    // and also mark human as dead
+    B.dci_nxt_gx = H.dci_now_gx;
+    B.dci_nxt_gy = H.dci_now_gy;
+    // TODO: Handle Human dying
+    // M.dci_obj_state = DC_OBJSTATE_DYING;
+  }
+  return ((B.dci_now_gx != B.dci_nxt_gx) || (B.dci_now_gy != B.dci_nxt_gy));
+}
+function dc_p_set_speed_direction(dca_spd, dca_kill) {
+  var original_speed = speed;
+  speed = 0;
+  if ((dci_now_gx < 0) || (dci_now_gy < 0) || (dci_nxt_gx < 0) || (dci_nxt_gy < 0)) return (original_speed > 0);
+  if ((dci_now_gx == dci_nxt_gx) && (dci_now_gy == dci_nxt_gy)) return (original_speed > 0);
+
+  var nxt_px = global.dcg_grid_min_px + (dci_nxt_gx * global.dcg_grid_cell_width);
+  var nxt_py = global.dcg_grid_min_py + (dci_nxt_gy * global.dcg_grid_cell_height) - global.dcg_grid_cell_height_offset;
+  var pdist = point_distance(x, y, nxt_px, nxt_py);
+  if (pdist < global.dcg_grid_min_distance) {
+    global.dcg_inst_grid[dci_now_gx, dci_now_gy] = noone;  // Remove from old pos
+    global.dcg_object_grid[dci_now_gx, dci_now_gy] &= ~(1<<dci_obj_type);
+    dci_now_gx = dci_nxt_gx;
+    dci_now_gy = dci_nxt_gy;
+    global.dcg_inst_grid[dci_now_gx, dci_now_gy] = self;  // Place at new pos
+    global.dcg_object_grid[dci_now_gx, dci_now_gy] |= (1<<dci_obj_type);
+    speed = 0;
+  } else {
+    speed = min(pdist, dca_spd);  // This stops the object oscillating at its endpoint
+    direction = point_direction(x, y, nxt_px, nxt_py);
+  }
+
+  // if ((dci_obj_type == DC_OBJECT_ENEMY1) || (dci_obj_type == DC_OBJECT_ENEMY2)) {
+  //   show_debug_message("END: Now=[{0},{1}] Nxt=[{2},{3}]  Dist={4} Speed={5} Inst={6}",
+  //                      dci_now_gx, dci_now_gy, dci_nxt_gx, dci_nxt_gy, pdist, speed, dci_which);
+  //   show_debug_message("END: Now=[{0},{1}] Nxt=[{2},{3}]  Dist={4} Speed={5} Inst={6}",
+  //                      x, y, nxt_px, nxt_py, pdist, speed, dci_which);
+  // }
+  return (original_speed > 0) && (speed == 0);  // Return true if stopped on this call
+}
 
 function dc_step_drone() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
@@ -1013,13 +1125,14 @@ function dc_step_laser() {
     case 3: sprite_index = spr_laserHoriz;            y -= 320; x += 16; y += 24; break;
     default: break;
   }
-  var tmp = call_later(2, time_source_units_seconds, dc_step_laser_end);  // 2 sec animation
+  var tmp = call_later(0.417, time_source_units_seconds, dc_step_laser_end);  // 2 sec animation
 }
 function dc_step_field() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_FIELD) return;  // Must be animating FIELD
   var stopped = dc_p_set_speed_direction(10, false);
   if (!stopped) return;
+  sprite_index = spr_fieldedtile;
   dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 function dc_step_enemy() {
@@ -1043,6 +1156,15 @@ function dc_step_enemy() {
     var stopped = dc_p_set_speed_direction(1, false);
     if (stopped) dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
   }
+}
+function dc_step_bullet() {
+  if (global.dcg_state != DC_STATE_ENEMY_ANIMATE_BULLETS) return;
+  // Move enemy bullets towards human
+  var stopped = dc_p_set_speed_direction(15, false);
+  if (!stopped) return;
+  sprite_index = spr_clear;
+  instance_destroy();
+  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 
 
@@ -1174,12 +1296,9 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
       case DC_ACTION_DRONE_MOVE:   new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_DRONE; break;
       case DC_ACTION_DRONE_HUMAN:  new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_HUMAN; break;
       case DC_ACTION_DRONE_LASER:  new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_LASER; break;
-
-      case DC_ACTION_DRONE_FIELD:
-      case DC_ACTION_NONE:
-      default:
-        // new_obj_sel_base = DC_OBJECT_DRONE;
-        break;
+      case DC_ACTION_DRONE_FIELD:  new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_FIELD; break;
+      case DC_ACTION_NONE: break;
+      default: break;
     }
     global.dcg_object_sel_base = new_obj_sel_base;
     global.dcg_object_move = new_obj_move;
@@ -1188,22 +1307,6 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
     dc_p_button_control();
 
     dc_p_fsm(DC_EVENT_OBJECT_SELECTED);  // Report object selected
-
-    // TODO: MAYBE NEED TO CREATE OBJECTS HERE???
-
-
-    // If clicked object NOT already selected, DO select otherwise DO deselect and go back to selecting DRONE
-    // var cur_obj_sel = global.dcg_object_selected;
-    // var new_obj_sel = (dca_obj_action == cur_obj_sel) ?DC_OBJECT_DRONE :dca_obj_action;
-    // if (cur_obj_sel != new_obj_sel) {
-    //  var inst = dc_p_find_instance(new_obj_sel, 0);
-    //  if (inst != noone) {
-    //    global.dcg_object_selected = new_obj_sel;
-    //    show_debug_message("CLICK {0}=[{1},{2}]", dc_p_get_name(new_obj_sel), inst.dci_now_gx, inst.dci_now_gy);
-    //  }
-    //  dc_p_button_control();
-    // }
-    // dc_p_fsm(DC_EVENT_OBJECT_SELECTED);  // Report object selected
 
   } else if (dca_ui_action == DC_ACTION_EXIT) {
     sprite_index = (dca_obj_action == global.dcg_object_action) ?dca_spr_on :dca_spr_off;
@@ -1240,27 +1343,32 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 // 12b. Disallow human/field on consecutive turns - DONE
 // 13. Add pseudo collision logic - DONE
 // 14. Laser animation - DONE
+// 15. Field handling - DONE
+// 16. ProjectileEnemies move and fire in a turn
+// 16a. They will fire at human if on same line - bullets blocked by field though - DONE
+//
 //
 // THINGS LEFT TO DO:
-// 15a. Support 'TurnEnd' button
-// 15b. Handle missile/drone at same location - use invisible missile sprite if so
-// 15c. Allow extra missile move if initial deploy from drone
+// 16b. Humans should die!!
+// 16b. They will fire at drone if on same line - bullets blocked by field though
 //
-// 16. ProjectileEnemies move and fire in a turn
-// 16a. They will fire at human or drone if on same line - bullets blocked by field though
+// 17a. Support 'TurnEnd' button
+// 17b. Handle missile/drone at same location - use invisible missile sprite if so
+// 17c. Allow extra missile move if initial deploy from drone
 //
-// 17. Allow human to be hit by missile/laser ==> GameOver!
-// 18. Stop laser fire 'escaping' into UI
 //
-// 19. Terminology - Game > Level > Round > PlayerTurn(N) EnemyTurn(1)
-// 20. Add in AnimationEnd Event to stop monster 'dying' animation
-// 21. Add end game detection logic
-// 22. Add README
+// 18. Allow human to be hit by missile/laser ==> GameOver!
+// 19. Stop laser fire 'escaping' into UI
+//
+// 20. Terminology - Game > Level > Round > PlayerTurn(N) EnemyTurn(1)
+// 21. Add in AnimationEnd Event to stop monster 'dying' animation
+// 22. Add end game detection logic
+// 23. Add README
 //
 // MAYBE:
-// 23. Use int64
-// 24. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
-// 25. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
+// 24. Use int64
+// 25. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
+// 26. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
 //
 
 

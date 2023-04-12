@@ -1,7 +1,7 @@
 {
   "resourceType": "GMObject",
   "resourceVersion": "1.0",
-  "name": "obj_field",
+  "name": "obj_bullet",
   "eventList": [
     {"resourceType":"GMEvent","resourceVersion":"1.0","name":"","collisionObjectId":null,"eventNum":0,"eventType":3,"isDnD":false,},
   ],
@@ -28,8 +28,8 @@
   "properties": [],
   "solid": false,
   "spriteId": {
-    "name": "spr_fieldedtile",
-    "path": "sprites/spr_fieldedtile/spr_fieldedtile.yy",
+    "name": "spr_bullet",
+    "path": "sprites/spr_bullet/spr_bullet.yy",
   },
   "spriteMaskId": null,
   "visible": true,
