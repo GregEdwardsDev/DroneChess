@@ -344,7 +344,7 @@ function dc_p_make_range_grid2() {
   // Prevent enemy locations being valid locations to move to
   dc_p_range_grid_enemyinvalidate(global.dcg_range_grid2);
   // Prevent field being a valid location to move to
-  dc_p_range_grid_fieldinvalidate(global.dcg_range_grid1);
+  dc_p_range_grid_fieldinvalidate(global.dcg_range_grid2);
 }
 function dc_p_make_range_grids() {
   dc_p_make_range_grid1();
@@ -1061,6 +1061,7 @@ function dc_p_set_speed_direction(dca_spd, dca_kill) {
 function dc_step_drone() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_DRONE) return;  // Must be animating DRONE
+  if (speed == 0) audio_play_sound(DroneMove, 10, false);
   var stopped = dc_p_set_speed_direction(10, false);
   if (!stopped) return;
   // Fixup laser pseudo-object to be at same gx/gy x/y location as drone
@@ -1073,6 +1074,7 @@ function dc_step_drone() {
 function dc_step_missile() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_MISSILE) return;  // Must be animating MISSILE
+  if (speed == 0) audio_play_sound(MissileMove, 10, false);
   var stopped = dc_p_set_speed_direction(25, true);
   if (!stopped) return;
   dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
@@ -1102,6 +1104,7 @@ function dc_step_laser_end() {
 function dc_step_laser() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
   if (global.dcg_object_animate != DC_OBJECT_LASER) return;  // Must be animating LASER
+  if (speed == 0) audio_play_sound(Laser1, 10, false);
 
   // Clear animate object - we only do a single step here - animation ends on timeout
   global.dcg_object_animate = DC_OBJECT_NONE;
@@ -1125,7 +1128,7 @@ function dc_step_laser() {
     case 3: sprite_index = spr_laserHoriz;            y -= 320; x += 16; y += 24; break;
     default: break;
   }
-  var tmp = call_later(0.417, time_source_units_seconds, dc_step_laser_end);  // 2 sec animation
+  var tmp = call_later(0.5, time_source_units_seconds, dc_step_laser_end);  // 2 sec animation
 }
 function dc_step_field() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
@@ -1316,7 +1319,10 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 
 //
 // BUGS:
-//  A. MissileMove is an ACTION!
+//  A. MissileMove is an ACTION! - FIXED
+//  B. Sometimes player gets 3 goes in a turn?
+//  B. Enemies should not move onto drone but can move onto missile
+//  C. Use integers for x/y etc
 //
 //
 // THINGS DONE:
@@ -1341,7 +1347,7 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 // 13. Add pseudo collision logic - DONE
 // 14. Laser animation - DONE
 // 15. Field handling - DONE
-// 16. ProjectileEnemies move and fire in a turn
+// 16. ProjectileEnemies move and fire in a turn - DONE
 // 16a. They will fire at human if on same line - bullets blocked by field though - DONE
 //
 //
@@ -1353,7 +1359,6 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 // 17b. Handle missile/drone at same location - use invisible missile sprite if so
 // 17c. Allow extra missile move if initial deploy from drone
 //
-//
 // 18. Allow human to be hit by missile/laser ==> GameOver!
 // 19. Stop laser fire 'escaping' into UI
 //
@@ -1361,6 +1366,7 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 // 21. Add in AnimationEnd Event to stop monster 'dying' animation
 // 22. Add end game detection logic
 // 23. Add README
+//
 //
 // MAYBE:
 // 24. Use int64
