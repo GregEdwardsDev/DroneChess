@@ -1,6 +1,134 @@
 // Script assets have changed for v2.3.0 see
 // https://help.yoyogames.com/hc/en-us/articles/360005277377 for more information
 
+
+//
+// INITIALISATION LOGIC - these not called directly from GameMaker events
+//
+// Called from FSM STATES GAME_START and ROOM_START
+//
+function dc_p_initialise_game_globals() {
+  // No per-game globals yet
+}
+function dc_p_initialise_room_globals() {
+  // Lots of per-room globals - also MACROS
+
+  // Globals to track objects at each grid location
+  global.dcg_objects_found = false;
+  global.dcg_wall_grid_built = false;
+  global.dcg_tile_grid_built = false;
+  global.dcg_wall_grid[0,0] = false;
+  global.dcg_tile_grid[0,0] = noone;
+  global.dcg_inst_grid[0,0] = noone;
+  global.dcg_object_grid[0,0] = 0;
+  global.dcg_range_grid1[0,0] = 0;
+  global.dcg_range_grid2[0,0] = 0;
+#macro DC_CTRL_NONE                          0
+#macro DC_CTRL_USE_FIRST_BEST_PATH           1
+#macro DC_CTRL_RETURN_IF_NO_SINGLE_BEST_PATH 2
+
+  // Stuff to map grid x/y to pixel x/y and vice versa
+  global.dcg_grid_invalid = 999;
+  global.dcg_grid_x_cells = 12;
+  global.dcg_grid_y_cells = 12;
+  global.dcg_grid_cell_width = 32;
+  global.dcg_grid_cell_height = 32;
+  global.dcg_grid_cell_height_offset = global.dcg_grid_cell_height / 2;
+  global.dcg_grid_min_distance = 4;
+  global.dcg_grid_min_px = 0;
+  global.dcg_grid_min_py = 128;
+  global.dcg_grid_max_px = global.dcg_grid_min_px + (global.dcg_grid_x_cells * global.dcg_grid_cell_width) - 1;
+  global.dcg_grid_max_py = global.dcg_grid_min_py + (global.dcg_grid_y_cells * global.dcg_grid_cell_height) - 1;
+
+  // Grid x/y locations for selection line
+  global.dcg_sel0_gx = -1;
+  global.dcg_sel0_gy = -1;
+  global.dcg_sel1_gx = -1;
+  global.dcg_sel1_gy = -1;
+  global.dcg_sel2_gx = -1;
+  global.dcg_sel2_gy = -1;
+
+  // STATES: 0=GameStart 1=RoomStart 2=TurnStart 3=UserSelect 4=UserAnimate 5=EnemyAnimate 6=TurnEnd 7=GameEnd
+#macro DC_STATE_GAME_START 0
+#macro DC_STATE_ROOM_START 1
+#macro DC_STATE_TURN_START 2
+#macro DC_STATE_USER_SELECT 3
+#macro DC_STATE_USER_ANIMATE 4
+#macro DC_STATE_USER_ANIMATE_HIT 5
+#macro DC_STATE_ENEMY_ANIMATE 6
+#macro DC_STATE_ENEMY_ANIMATE_BULLETS 7
+#macro DC_STATE_TURN_END 8
+#macro DC_STATE_ROOM_END 9
+#macro DC_STATE_GAME_END 10
+  global.dcg_state = DC_STATE_ROOM_START;
+
+  // EVENTS: 0=None 1=EnterState 2=ObjectSelected 3=DestSelected 4=TurnFinished 5=AnimateEnded
+#macro DC_EVENT_NONE 0
+#macro DC_EVENT_ENTER_STATE 1
+#macro DC_EVENT_OBJECT_SELECTED 2
+#macro DC_EVENT_DEST_SELECTED 3
+#macro DC_EVENT_TURN_FINISHED 4
+#macro DC_EVENT_ANIMATE_ENDED 5
+
+  // OBJECTS: 0=None 1=Drone 2=Missile 3=Human 4=Laser 5=Field 6=Enemy1(Melee) 7=Enemy2(Projectile)
+  //         15=Mouse (pseudo-object to match against in dc_p_find_sel2)
+#macro DC_OBJECT_FIRST 0
+#macro DC_OBJECT_NONE 0
+#macro DC_OBJECT_DRONE 1
+#macro DC_OBJECT_MISSILE 2
+#macro DC_OBJECT_HUMAN 3
+#macro DC_OBJECT_LASER 4
+#macro DC_OBJECT_FIELD 5
+#macro DC_OBJECT_ENEMY1 6
+#macro DC_OBJECT_ENEMY2 7
+#macro DC_OBJECT_WALL 8
+#macro DC_OBJECT_MOUSE 15
+  global.dcg_object_sel_base = DC_OBJECT_NONE;
+  global.dcg_object_move = DC_OBJECT_NONE;
+  global.dcg_object_animate = DC_OBJECT_NONE;
+  global.dcg_objects_animating = 0;
+
+  // OBJECT STATES: 0=None 1=Alive 2=Dying 3=Dead
+#macro DC_OBJSTATE_NONE  0
+#macro DC_OBJSTATE_ALIVE 1
+#macro DC_OBJSTATE_DYING 2
+#macro DC_OBJSTATE_DEAD  3
+  global.dcg_human_alive = true;
+  global.dcg_enemies_alive = 0;
+  global.dcg_enemies_dying = 0;
+  global.dcg_enemies_dead = 0;
+
+  // UI ACTIONS: 13=MouseEnter 14=MouseClick 15=MouseExit
+#macro DC_ACTION_NONE          0
+#macro DC_ACTION_ENTER         1
+#macro DC_ACTION_CLICK         2
+#macro DC_ACTION_EXIT          3
+
+  // GAME ACTIONS: 0=None 11=DroneMove 12=DroneFireLaser 13=DroneProjectField 14=DroneDisplaceHuman 15=MissileMove
+#macro DC_ACTION_DRONE_MOVE   11
+#macro DC_ACTION_DRONE_LASER  12
+#macro DC_ACTION_DRONE_FIELD  13
+#macro DC_ACTION_DRONE_HUMAN  14
+#macro DC_ACTION_MISSILE_MOVE 15
+  global.dcg_object_action = DC_ACTION_NONE;
+
+  // Turn counter - incremented on turn start so first turn is turn 1
+  global.dcg_turn = 0;
+  // Global var to track whether certain action buttons are available or not
+  global.dcg_button_avail_mask = 0;
+  // ...and whether human/field have been used
+  global.dcg_field_used[0] = false;
+  global.dcg_human_used[0] = false;
+  global.dcg_field_used[1] = false;
+  global.dcg_human_used[1] = false;
+
+  // For each action type maintain a mask of where selection lines should stop
+  global.dcg_limit_obj_mask[0] = 0;
+  // For each action type maintain a max distance that selection lines are allowed to extend
+  global.dcg_max_distance[0] = 0;
+}
+
+
 //
 // PRIVATE FUNCTIONS - these not called directly from GameMaker events
 //
@@ -114,6 +242,7 @@ function dc_p_find_objects() {
   while (dc_p_setup_now_xy(DC_OBJECT_ENEMY2, i2) != noone) {
     i2++;
   }
+  global.dcg_enemies_alive = i1 + i2;
   dc_p_setup_laser();
   dc_p_setup_field();
   // TODO: BARF IF DRONE OR HUMAN or MONSTER(S) MISSING!!!
@@ -351,7 +480,7 @@ function dc_p_make_range_grids() {
   dc_p_make_range_grid2();
 }
 
-function dc_p_initialise() {
+function dc_p_initialise_room() {
   dc_p_find_objects();
   dc_p_find_walls();
   dc_p_make_tile_grid();
@@ -506,17 +635,28 @@ function dc_p_find_sel2(dca_mouse_gx, dca_mouse_gy, dca_lim_obj_mask, dca_max_di
 //
 // STATE MACHINE AND STATE UTILITY FUNCTIONS
 //
+// EXTERNAL
+//
+function dc_game_start() {
+  dc_p_fsm_game_start(DC_EVENT_ENTER_STATE);
+}
+function dc_room_start() {
+  dc_p_fsm_room_start(DC_EVENT_ENTER_STATE);
+}
+
+// INTERNAL
+//
 function dc_p_fsm_debug(dca_event) {
-  // show_debug_message("DEBUG: State={0} Event={1}", global.dcg_state, dca_event);
+  show_debug_message("DEBUG: State={0} Event={1}", global.dcg_state, dca_event);
 }
 function dc_p_fsm_state_invalid(dca_event) {
   dc_p_fsm_debug(dca_event);
 }
-
 function dc_p_fsm(dca_event) {
   dc_p_fsm_debug(dca_event);
   switch (global.dcg_state) {
     case DC_STATE_GAME_START:            dc_p_fsm_game_start(dca_event); return;
+    case DC_STATE_ROOM_START:            dc_p_fsm_room_start(dca_event); return;
     case DC_STATE_TURN_START:            dc_p_fsm_turn_start(dca_event); return;
     case DC_STATE_USER_SELECT:           dc_p_fsm_user_select(dca_event); return;
     case DC_STATE_USER_ANIMATE:          dc_p_fsm_user_animate(dca_event); return;
@@ -524,6 +664,7 @@ function dc_p_fsm(dca_event) {
     case DC_STATE_ENEMY_ANIMATE:         dc_p_fsm_enemy_animate(dca_event); return;
     case DC_STATE_ENEMY_ANIMATE_BULLETS: dc_p_fsm_enemy_animate_bullets(dca_event); return;
     case DC_STATE_TURN_END:              dc_p_fsm_turn_end(dca_event); return;
+    case DC_STATE_ROOM_END:              dc_p_fsm_room_end(dca_event); return;
     case DC_STATE_GAME_END:              dc_p_fsm_game_end(dca_event); return;
     default:                             dc_p_fsm_state_invalid(dca_event); return;
   }
@@ -534,20 +675,29 @@ function dc_p_fsm_set_state(dc_new_state) {
   dc_p_fsm(DC_EVENT_ENTER_STATE);
 }
 
+
 function dc_p_fsm_game_start(dca_event) {
-  // TODO: is this needed? Or do we just jump into room_start/turn_start
   // Setup overall game state
   if (dca_event == DC_EVENT_ENTER_STATE) {
-    dc_p_fsm_set_state(DC_STATE_TURN_START);
+
+    dc_p_initialise_game_globals();
+
+    room_goto_next();
   }
 }
-function dc_p_fsm_room_start() {
-  // TODO: assumes this re-called each time we enter new room
-  dc_p_initialise();
+function dc_p_fsm_room_start(dca_event) {
+  if (dca_event == DC_EVENT_ENTER_STATE) {
 
-  dc_p_button_room_start_begin();
+    show_debug_message("DEBUG: Initialising globals for room {0}", room_get_name(room));
+    dc_p_initialise_room_globals();
 
-  dc_p_fsm_set_state(DC_STATE_TURN_START);
+    show_debug_message("DEBUG: Initialising room {0}", room_get_name(room));
+    dc_p_initialise_room();
+
+    dc_p_button_room_start_begin();
+
+    dc_p_fsm_set_state(DC_STATE_TURN_START);
+  }
 }
 function dc_p_fsm_turn_start(dca_event) {
   if (dca_event == DC_EVENT_ENTER_STATE) {
@@ -582,6 +732,7 @@ function dc_p_fsm_user_select(dca_event) {
 
     // Look along animating object's path and markup any enemies as HIT
     global.dcg_enemies_dying = dc_p_fsm_maybe_hit_enemies();
+    global.dcg_enemies_alive -= global.dcg_enemies_dying;
 
     dc_p_fsm_set_state(DC_STATE_USER_ANIMATE);
   }
@@ -607,6 +758,8 @@ function dc_p_fsm_user_animate_hit(dca_event) {
   }
   if (dca_event == DC_EVENT_ANIMATE_ENDED) {
     global.dcg_enemies_dying--;
+    global.dcg_enemies_dead++;
+
   }
   if ((dca_event == DC_EVENT_ENTER_STATE) || (dca_event == DC_EVENT_ANIMATE_ENDED)) {
 
@@ -628,6 +781,8 @@ function dc_p_fsm_enemy_animate(dca_event) {
     dc_p_make_object_grid();  // Track where everything is
     dc_p_make_range_grids();
 
+    // If *before moving* there's an enemy alongside a human, then human dies
+    if (dc_p_fsm_enemy_alongside_human()) global.dcg_human_alive = false;
     global.dcg_objects_animating = dc_p_fsm_enemies_reposition();
 
     if (global.dcg_objects_animating > 0) {
@@ -671,9 +826,26 @@ function dc_p_fsm_turn_end(dca_event) {
     global.dcg_object_animate = DC_OBJECT_NONE;
     // Reset any field
     dc_p_fsm_reset_field();
-    // Loop back to start
     dc_p_button_turn_end_begin();
-    dc_p_fsm_set_state(DC_STATE_TURN_START);
+    if ((global.dcg_enemies_alive == 0) || (!global.dcg_human_alive)) {
+      // This room over
+      dc_p_fsm_set_state(DC_STATE_ROOM_END);
+    } else {
+      // Loop back to start
+      dc_p_fsm_set_state(DC_STATE_TURN_START);
+    }
+  }
+}
+function dc_p_fsm_room_end(dca_event) {
+  if (dca_event == DC_EVENT_ENTER_STATE) {
+    var tmp = call_later(1.5, time_source_units_seconds, dc_p_fsm_room_end2);
+  }
+}
+function dc_p_fsm_room_end2() {
+  if (!global.dcg_human_alive) {
+    room_restart();
+  } else {
+    room_goto_next();
   }
 }
 function dc_p_fsm_game_end(dca_event) {
@@ -682,6 +854,29 @@ function dc_p_fsm_game_end(dca_event) {
   }
 }
 
+
+// See if human has an enemy adjacent
+function dc_p_fsm_enemy_alongside_human() {
+  var human = dc_p_find_instance(DC_OBJECT_HUMAN, 0);
+  if (human == noone) return false;
+  for (var dx = -1; dx <= 1; dx++) {
+    for (var dy = -1; dy <= 1; dy++) {
+      if ((dx == 0) && (dy == 0)) continue;
+      // For all 8 directions
+      var tgx = human.dci_now_gx + dx;
+      var tgy = human.dci_now_gy + dy;
+      if ( (tgx >= 0) && (tgx < global.dcg_grid_x_cells) &&
+           (tgy >= 0) && (tgy < global.dcg_grid_y_cells) ) {
+        var pinst = global.dcg_inst_grid[tgx, tgy];
+        if ((pinst != noone) && (pinst.dci_obj_state == DC_OBJSTATE_ALIVE) &&
+            ((pinst.dci_obj_type == DC_OBJECT_ENEMY1) || (pinst.dci_obj_type == DC_OBJECT_ENEMY2))) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 // Fixup enemies nxt_gx/gy
 function dc_p_fsm_maybe_hit_enemies() {
   // Only MISSILE and LASER cause enemy hits
@@ -1022,8 +1217,9 @@ function dc_p_enemy_fires_bullet(dca_monst) {
     // and also mark human as dead
     B.dci_nxt_gx = H.dci_now_gx;
     B.dci_nxt_gy = H.dci_now_gy;
-    // TODO: Handle Human dying
-    // M.dci_obj_state = DC_OBJSTATE_DYING;
+    // TODO: Need Human dying animation
+    H.dci_obj_state = DC_OBJSTATE_DYING;
+    global.dcg_human_alive = false;
   }
   return ((B.dci_now_gx != B.dci_nxt_gx) || (B.dci_now_gy != B.dci_nxt_gy));
 }
@@ -1160,7 +1356,7 @@ function dc_step_enemy() {
 function dc_step_bullet() {
   if (global.dcg_state != DC_STATE_ENEMY_ANIMATE_BULLETS) return;
   // Move enemy bullets towards human
-  var stopped = dc_p_set_speed_direction(15, false);
+  var stopped = dc_p_set_speed_direction(50, false);
   if (!stopped) return;
   sprite_index = spr_clear;
   instance_destroy();
