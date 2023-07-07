@@ -8,10 +8,19 @@
 // Called from FSM STATES GAME_START and ROOM_START
 //
 function dc_p_initialise_game_globals() {
-  // No per-game globals yet
+  global.dcg_human_is_immortal = true;  
+  global.dcg_pitch_var = 1.0595;  // 12th root of 2; 1 semitone variation
+
+  // Setup sounds
+  audio_play_sound(loopDrone, 10, true, 1);
+  audio_play_sound(loopMissile, 10, true, 1);
+  audio_play_sound(loopMeleeEnemy, 10, true, 1);
+  audio_play_sound(loopProjectileEnemy, 10, true, 1);
 }
 function dc_p_initialise_room_globals() {
   // Lots of per-room globals - also MACROS
+  global.dcg_abs_smallest_range = 9999999;
+  global.dcg_pitch_mult = 1;  
 
   // Globals to track objects at each grid location
   global.dcg_objects_found = false;
@@ -94,6 +103,8 @@ function dc_p_initialise_room_globals() {
 #macro DC_OBJSTATE_DYING 2
 #macro DC_OBJSTATE_DEAD  3
   global.dcg_human_alive = true;
+  global.dcg_enemies_n_melee = 0;
+  global.dcg_enemies_n_projectile = 0;
   global.dcg_enemies_alive = 0;
   global.dcg_enemies_dying = 0;
   global.dcg_enemies_dead = 0;
@@ -224,6 +235,14 @@ function dc_p_setup_field() {
   if (drone == noone) return;
   dc_p_setup_pseudo_object(DC_OBJECT_FIELD, obj_field, drone.x, drone.y);
 }
+function dc_p_setup_missile_if_missing() {
+  // Special logic to construct missile if we haven't found one
+  // If we don't find one we assumed it's 'docked in drone' - so we create the object but with a clear sprite
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;    
+  dc_p_setup_pseudo_object(DC_OBJECT_MISSILE, obj_missile, drone.x, drone.y);
+  dc_p_dock_undock_missile(false);
+}
 
 
 function dc_p_find_objects() {
@@ -232,17 +251,28 @@ function dc_p_find_objects() {
   for (var otyp = DC_OBJECT_DRONE; otyp <= DC_OBJECT_FIELD; otyp++) {
     dc_p_setup_now_xy(otyp, 0);
   }
+  // Create missile object 'docked in drone' if none in room
+  dc_p_setup_missile_if_missing();
+    
   // Find melee enemies
   var i1 = 0;
   while (dc_p_setup_now_xy(DC_OBJECT_ENEMY1, i1) != noone) {
     i1++;
   }
+  var gain1 = (i1 > 0) ?1 :0;
+  global.dcg_enemies_n_melee = i1;
+  audio_sound_gain(loopMeleeEnemy, gain1, 100);  // 100ms
   // Find projectile enemies
   var i2 = 0;
   while (dc_p_setup_now_xy(DC_OBJECT_ENEMY2, i2) != noone) {
     i2++;
   }
+  var gain2 = (i2 > 0) ?1 :0;
+  global.dcg_enemies_n_projectile = i2;
+  audio_sound_gain(loopProjectileEnemy, gain2, 100);  // 100ms
+    
   global.dcg_enemies_alive = i1 + i2;
+
   dc_p_setup_laser();
   dc_p_setup_field();
   // TODO: BARF IF DRONE OR HUMAN or MONSTER(S) MISSING!!!
@@ -842,7 +872,18 @@ function dc_p_fsm_room_end(dca_event) {
   }
 }
 function dc_p_fsm_room_end2() {
-  if (!global.dcg_human_alive) {
+  // Revert any pitch change in tracks
+  audio_sound_pitch(loopDrone, 1);
+  audio_sound_pitch(loopMissile, 1);
+  audio_sound_pitch(loopMeleeEnemy, 1);
+  audio_sound_pitch(loopProjectileEnemy, 1);
+  // And set track_pos back to start
+  audio_sound_set_track_position(loopDrone, 0);
+  audio_sound_set_track_position(loopMissile, 0);
+  audio_sound_set_track_position(loopMeleeEnemy, 0);
+  audio_sound_set_track_position(loopProjectileEnemy, 0);
+
+  if (!global.dcg_human_alive && !global.dcg_human_is_immortal) {
     room_restart();
   } else {
     room_goto_next();
@@ -911,6 +952,7 @@ function dc_p_fsm_maybe_hit_enemies() {
 }
 // Fixup enemies nxt_gx/gy
 function dc_p_fsm_enemies_reposition() {
+  var prev_abs_smallest_range = global.dcg_abs_smallest_range;
   var n_to_animate = 0;
   // Do ENEMY2 first - they're nastier!
   for (var etyp = DC_OBJECT_ENEMY2; etyp >= DC_OBJECT_ENEMY1; etyp--) {
@@ -923,6 +965,24 @@ function dc_p_fsm_enemies_reposition() {
       }
       i++;
     }
+  }
+
+  var curr_abs_smallest_range = global.dcg_abs_smallest_range;
+  var tooClose = 1;
+  var pitch_mult = global.dcg_pitch_mult;  
+    if ((prev_abs_smallest_range > tooClose) && (curr_abs_smallest_range <= tooClose) && (pitch_mult <= 1.0)) {
+      // Increase pitch by a semitone
+      pitch_mult *= global.dcg_pitch_var;
+    } else if ((prev_abs_smallest_range <= tooClose) && (curr_abs_smallest_range > tooClose) && (pitch_mult > 1.0)) {
+      // Decrease pitch by a semitone
+      pitch_mult /= global.dcg_pitch_var;
+  }
+  if (global.dcg_pitch_mult != pitch_mult) {
+      global.dcg_pitch_mult = pitch_mult;
+      audio_sound_pitch(loopDrone, global.dcg_pitch_mult);
+      audio_sound_pitch(loopMissile, global.dcg_pitch_mult);
+      audio_sound_pitch(loopMeleeEnemy, global.dcg_pitch_mult);
+      audio_sound_pitch(loopProjectileEnemy, global.dcg_pitch_mult);
   }
   return n_to_animate;  // Count of enemies that will animate
 }
@@ -1151,6 +1211,7 @@ function dc_p_find_enemy_best_path(dca_monst, dca_array_a, dca_array_b, dca_ctrl
     }
   }
   if (smallest_range == original_range) return false;
+  if (smallest_range < global.dcg_abs_smallest_range) global.dcg_abs_smallest_range = smallest_range;
   // Restore original range in old gx/gy as now a valid location for a monster move
   dca_array_a[@ gx, gy] -= 9000000;
   dca_array_b[@ gx, gy] -= 9000000;
@@ -1254,26 +1315,49 @@ function dc_p_set_speed_direction(dca_spd, dca_kill) {
   return (original_speed > 0) && (speed == 0);  // Return true if stopped on this call
 }
 
+function dc_p_dock_undock_missile(dca_missile_move) {
+    var missile = dc_p_find_instance(DC_OBJECT_MISSILE, 0);
+    var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+    if ((missile == noone) || (drone == noone)) return;
+    
+    if ((drone.dci_now_gx == missile.dci_now_gx) && (drone.dci_now_gy == missile.dci_now_gy)) {
+	// Missile moved into drone or drone moved onto missile
+	missile.sprite_index = spr_clear;  // Blank missile sprite to remember missile docked
+	audio_sound_gain(loopMissile, 0, 100);  // Gain 0 (in 100ms) - missile quiet
+    } else if (missile.sprite_index == spr_clear) {
+	if (dca_missile_move) {
+	    // Missile was docked but has now moved out of drone
+	    missile.sprite_index = spr_missileidle1;  // Reinstate missile sprite    
+	    audio_sound_gain(loopMissile, 1, 100);  // Gain 1 (in 100ms) - missile noises again
+	} else {
+	    // Missile is docked in drone and drone has moved so mimic movement
+	    missile.dci_now_gx = drone.dci_now_gx;
+	    missile.dci_now_gy = drone.dci_now_gy;
+	}
+    }
+}
 function dc_step_drone() {
-  if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
-  if (global.dcg_object_animate != DC_OBJECT_DRONE) return;  // Must be animating DRONE
-  if (speed == 0) audio_play_sound(DroneMove, 10, false);
-  var stopped = dc_p_set_speed_direction(10, false);
-  if (!stopped) return;
-  // Fixup laser pseudo-object to be at same gx/gy x/y location as drone
-  var laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
-  if (laser == noone) return;
-  laser.dci_now_gx = dci_now_gx; laser.dci_now_gy = dci_now_gy;
-  laser.x = x; laser.y = y;
-  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+    if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
+    if (global.dcg_object_animate != DC_OBJECT_DRONE) return;  // Must be animating DRONE
+    if (speed == 0) audio_play_sound(DroneMove, 10, false);
+    var stopped = dc_p_set_speed_direction(10, false);
+    if (!stopped) return;
+    // Fixup laser pseudo-object to be at same gx/gy x/y location as drone
+    var laser = dc_p_find_instance(DC_OBJECT_LASER, 0);
+    if (laser == noone) return;
+    laser.dci_now_gx = dci_now_gx; laser.dci_now_gy = dci_now_gy;
+    laser.x = x; laser.y = y;
+    dc_p_dock_undock_missile(false);
+    dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 function dc_step_missile() {
-  if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
-  if (global.dcg_object_animate != DC_OBJECT_MISSILE) return;  // Must be animating MISSILE
-  if (speed == 0) audio_play_sound(MissileMove, 10, false);
-  var stopped = dc_p_set_speed_direction(25, true);
-  if (!stopped) return;
-  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+    if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
+    if (global.dcg_object_animate != DC_OBJECT_MISSILE) return;  // Must be animating MISSILE
+    if (speed == 0) audio_play_sound(MissileMove, 10, false);
+    var stopped = dc_p_set_speed_direction(25, true);
+    if (!stopped) return;
+    dc_p_dock_undock_missile(true);
+    dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
 function dc_step_human() {
   if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
@@ -1338,8 +1422,16 @@ function dc_step_enemy_end() {
   if ((global.dcg_state == DC_STATE_USER_ANIMATE_HIT) && (dci_obj_state == DC_OBJSTATE_DYING)) {
     // Called on amimate end event
     dci_obj_state = DC_OBJSTATE_DEAD;
-    if      (sprite_index == spr_enemymeleedying)      sprite_index = spr_enemymeleedead;
-    else if (sprite_index == spr_enemyprojectiledying) sprite_index = spr_enemyprojectiledead;
+    if (sprite_index == spr_enemymeleedying) {
+	sprite_index = spr_enemymeleedead;	
+	global.dcg_enemies_n_melee--;
+	if (global.dcg_enemies_n_melee == 0) audio_sound_gain(loopMeleeEnemy, 0, 100);  // 100ms
+
+    } else if (sprite_index == spr_enemyprojectiledying) {
+	sprite_index = spr_enemyprojectiledead;
+	global.dcg_enemies_n_projectile--;
+	if (global.dcg_enemies_n_projectile == 0) audio_sound_gain(loopProjectileEnemy, 0, 100);  // 100ms
+    }
     dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
   }
 }
