@@ -8,7 +8,7 @@
 // Called from FSM STATES GAME_START and ROOM_START
 //
 function dc_p_initialise_game_globals() {
-  global.dcg_human_is_immortal = true;  
+  global.dcg_human_is_immortal = false;  
   global.dcg_pitch_var = 1.0595;  // 12th root of 2; 1 semitone variation
 
   // Setup sounds
@@ -66,9 +66,10 @@ function dc_p_initialise_room_globals() {
 #macro DC_STATE_USER_ANIMATE_HIT 5
 #macro DC_STATE_ENEMY_ANIMATE 6
 #macro DC_STATE_ENEMY_ANIMATE_BULLETS 7
-#macro DC_STATE_TURN_END 8
-#macro DC_STATE_ROOM_END 9
-#macro DC_STATE_GAME_END 10
+#macro DC_STATE_USER_ANIMATE_DYING 8
+#macro DC_STATE_TURN_END 9
+#macro DC_STATE_ROOM_END 10
+#macro DC_STATE_GAME_END 11
   global.dcg_state = DC_STATE_ROOM_START;
 
   // EVENTS: 0=None 1=EnterState 2=ObjectSelected 3=DestSelected 4=TurnFinished 5=AnimateEnded
@@ -334,7 +335,7 @@ function dc_p_make_object_grid() {
 function dc_p_make_limit_obj_masks() {
   for (var i = 0; i < 16; i++) global.dcg_limit_obj_mask[i] = (1<<DC_OBJECT_WALL);
   var enemies = (1<<DC_OBJECT_ENEMY1) | (1<<DC_OBJECT_ENEMY2);
-  global.dcg_limit_obj_mask[DC_ACTION_DRONE_MOVE] = (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_MOUSE) | enemies;
+  global.dcg_limit_obj_mask[DC_ACTION_DRONE_MOVE] = (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_HUMAN) | (1<<DC_OBJECT_MOUSE) | enemies;
   global.dcg_limit_obj_mask[DC_ACTION_DRONE_LASER] = 0;
   global.dcg_limit_obj_mask[DC_ACTION_DRONE_FIELD] = (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_MOUSE);
   global.dcg_limit_obj_mask[DC_ACTION_DRONE_HUMAN] = (1<<DC_OBJECT_WALL) | (1<<DC_OBJECT_HUMAN) | (1<<DC_OBJECT_MOUSE) | enemies;
@@ -375,27 +376,33 @@ function dc_p_range_grid_setpos(dca_array, dca_gx, dca_gy, dca_val) {
 }
 function dc_p_range_grid_setlinesfrom(dca_array, dca_gx, dca_gy, dca_val) {
   var listThis = ds_list_create();
-  for (var dx = -1; dx <= 1; dx++) {
-    for (var dy = -1; dy <= 1; dy++) {
-      if ((dx == 0) && (dy == 0)) continue;
-      // For all 8 directions
-      var tgx = dca_gx;
-      var tgy = dca_gy;
-      // While valid gy/gy and grid pos unset (<0) fill in val
-      // and record position in list
-      while ( ((tgx + dx) >= 0) && ((tgx + dx) < global.dcg_grid_x_cells) &&
-              ((tgy + dy) >= 0) && ((tgy + dy) < global.dcg_grid_y_cells) &&
-              (dca_array[@ tgx + dx, tgy + dy] < 0) ) {
-        tgx += dx;
-        tgy += dy;
-        dca_array[@ tgx, tgy] = dca_val;
-        ds_list_add(listThis, (1<<20) + (tgx << 10) + (tgy << 0));
-      }
+  // Fill in grid vals in order W E N S NW NE SW SE
+  var dxtab = [ -1,  1,  0,  0, -1,  1, -1,  1 ];
+  var dytab = [  0,  0, -1,  1, -1, -1,  1,  1 ];
+  for (var i = 0; i < 8; i++) {
+    var dx = dxtab[i];
+    var dy = dytab[i];	
+    if ((dx == 0) && (dy == 0)) continue;  // Just in case
+    // For all 8 directions
+    var tgx = dca_gx;
+    var tgy = dca_gy;
+    // While valid gy/gy and grid pos unset (<0) fill in val
+    // and record position in list
+    while ( ((tgx + dx) >= 0) && ((tgx + dx) < global.dcg_grid_x_cells) &&
+            ((tgy + dy) >= 0) && ((tgy + dy) < global.dcg_grid_y_cells) &&
+            (dca_array[@ tgx + dx, tgy + dy] < 0) ) {
+      tgx += dx;
+      tgy += dy;
+      dca_array[@ tgx, tgy] = dca_val;
+      ds_list_add(listThis, (1<<20) + (tgx << 10) + (tgy << 0));
     }
   }
   return listThis;
 }
 function dc_p_range_grid_populate(dca_array, dca_list, dca_val) {
+  // Fill in grid vals in order W E N S NW NE SW SE
+  var dxtab = [ -1,  1,  0,  0, -1,  1, -1,  1 ];
+  var dytab = [  0,  0, -1,  1, -1, -1,  1,  1 ];
   var listThis = dca_list;
   var listNext = ds_list_create();  // To hold new list for val+1
 
@@ -416,17 +423,17 @@ function dc_p_range_grid_populate(dca_array, dca_list, dca_val) {
 
       // Look for all valid neighbour cells of gx/gy that currently are -1 and set
       // them to X+1 and also add those neighbour gx/gy locations to listNext
-      for (var dx = -1; dx <= 1; dx++) {
-        for (var dy = -1; dy <= 1; dy++) {
-          if ((dx == 0) && (dy == 0)) continue;
-          // For all 8 neighbours
-          if ( ((gx + dx) >= 0) && ((gx + dx) < global.dcg_grid_x_cells) &&
-               ((gy + dy) >= 0) && ((gy + dy) < global.dcg_grid_y_cells) &&
-               (dca_array[@ gx + dx, gy + dy] < 0) ) {
+      for (var j = 0; j < 8; j++) {
+        var dx = dxtab[j];
+        var dy = dytab[j];	
+        if ((dx == 0) && (dy == 0)) continue;
+        // For all 8 neighbours
+        if ( ((gx + dx) >= 0) && ((gx + dx) < global.dcg_grid_x_cells) &&
+             ((gy + dy) >= 0) && ((gy + dy) < global.dcg_grid_y_cells) &&
+             (dca_array[@ gx + dx, gy + dy] < 0) ) {
 
-            dca_array[@ gx + dx, gy + dy] = dca_val;
-            ds_list_add(listNext, (1<<20) + ((gx+dx) << 10) + ((gy+dy) << 0));
-          }
+          dca_array[@ gx + dx, gy + dy] = dca_val;
+          ds_list_add(listNext, (1<<20) + ((gx+dx) << 10) + ((gy+dy) << 0));
         }
       }
     }
@@ -468,6 +475,14 @@ function dc_p_range_grid_fieldinvalidate(dca_array) {
     dca_array[@ dci_now_gx, dci_now_gy] = 0;
   }
 }
+function dc_p_range_grid_droneinvalidate(dca_array) {
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  with (drone) {
+    // Make range of drone current cell = 0 to prevent monsters moving on to it
+    dca_array[@ dci_now_gx, dci_now_gy] = 0;
+  }
+}
 
 // Make dcg_range_grid1 used by DC_OBJECT_ENEMY1(melee) to move closer to human
 function dc_p_make_range_grid1() {
@@ -484,6 +499,8 @@ function dc_p_make_range_grid1() {
   dc_p_range_grid_enemyinvalidate(global.dcg_range_grid1);
   // Prevent field being a valid location to move to
   dc_p_range_grid_fieldinvalidate(global.dcg_range_grid1);
+  // Prevent drone being a valid location to move to
+  dc_p_range_grid_droneinvalidate(global.dcg_range_grid1);
 }
 // Make dcg_range_grid2 used by DC_OBJECT_ENEMY2(projectile) to move closer to any
 // horizontal/vertical/diagonal line that has visibility of human
@@ -504,6 +521,8 @@ function dc_p_make_range_grid2() {
   dc_p_range_grid_enemyinvalidate(global.dcg_range_grid2);
   // Prevent field being a valid location to move to
   dc_p_range_grid_fieldinvalidate(global.dcg_range_grid2);
+  // Prevent drone being a valid location to move to
+  dc_p_range_grid_droneinvalidate(global.dcg_range_grid1);
 }
 function dc_p_make_range_grids() {
   dc_p_make_range_grid1();
@@ -693,6 +712,7 @@ function dc_p_fsm(dca_event) {
     case DC_STATE_USER_ANIMATE_HIT:      dc_p_fsm_user_animate_hit(dca_event); return;
     case DC_STATE_ENEMY_ANIMATE:         dc_p_fsm_enemy_animate(dca_event); return;
     case DC_STATE_ENEMY_ANIMATE_BULLETS: dc_p_fsm_enemy_animate_bullets(dca_event); return;
+    case DC_STATE_USER_ANIMATE_DYING:    dc_p_fsm_user_animate_dying(dca_event); return;
     case DC_STATE_TURN_END:              dc_p_fsm_turn_end(dca_event); return;
     case DC_STATE_ROOM_END:              dc_p_fsm_room_end(dca_event); return;
     case DC_STATE_GAME_END:              dc_p_fsm_game_end(dca_event); return;
@@ -797,8 +817,11 @@ function dc_p_fsm_user_animate_hit(dca_event) {
     if (global.dcg_enemies_dying == 0) {
 
       // Turn complete? If not return to selecting state. If so then enemy animate
+      // (NB Turn might end prematurely if no enemies left alive)
       var turn_not_over = dc_p_button_user_animations_complete();
-      if (turn_not_over) {
+      if (global.dcg_enemies_alive == 0) {
+        dc_p_fsm_set_state(DC_STATE_ENEMY_ANIMATE);
+      } else if (turn_not_over) {
         dc_p_fsm_set_state(DC_STATE_USER_SELECT);
       } else {
         dc_p_fsm_set_state(DC_STATE_ENEMY_ANIMATE);
@@ -811,7 +834,7 @@ function dc_p_fsm_enemy_animate(dca_event) {
     dc_p_make_object_grid();  // Track where everything is
     dc_p_make_range_grids();
 
-    // If *before moving* there's an enemy alongside a human, then human dies
+    // (Just in case) if *before moving* there's an enemy alive, alongside a human, then human dies
     if (dc_p_fsm_enemy_alongside_human()) global.dcg_human_alive = false;
     global.dcg_objects_animating = dc_p_fsm_enemies_reposition();
 
@@ -820,11 +843,15 @@ function dc_p_fsm_enemy_animate(dca_event) {
       global.dcg_object_animate = DC_OBJECT_ENEMY1;
     } else {
       // No enemies to animate - animate bullets?
-      dc_p_fsm_set_state(DC_STATE_TURN_END);
+      dc_p_fsm_set_state(DC_STATE_ENEMY_ANIMATE_BULLETS);
     }
   }
   if (dca_event == DC_EVENT_ANIMATE_ENDED) {
     global.dcg_objects_animating--;
+
+    // If *after moving* there's an enemy alive, alongside a human, then human dies
+    if (dc_p_fsm_enemy_alongside_human()) global.dcg_human_alive = false;
+
     // show_debug_message("NUM ENEMIES STILL ANIMATING = {0}", global.dcg_objects_animating);
     if (global.dcg_objects_animating == 0) {
       // Enemies finished animating - animate bullets
@@ -840,15 +867,31 @@ function dc_p_fsm_enemy_animate_bullets(dca_event) {
 
     if (global.dcg_objects_animating == 0) {
       // No enemy bullets to animate - turn is over
-      dc_p_fsm_set_state(DC_STATE_TURN_END);
+      dc_p_fsm_set_state(DC_STATE_USER_ANIMATE_DYING);
     }
   }
   if (dca_event == DC_EVENT_ANIMATE_ENDED) {
+
     global.dcg_objects_animating--;
     if (global.dcg_objects_animating == 0) {
       // Enemy bullets finished animating - turn is over
-      dc_p_fsm_set_state(DC_STATE_TURN_END);
+      dc_p_fsm_set_state(DC_STATE_USER_ANIMATE_DYING);
     }
+  }
+}
+function dc_p_fsm_user_animate_dying(dca_event) {
+  if (dca_event == DC_EVENT_ENTER_STATE) {
+
+    if (global.dcg_human_alive) {
+      // Human still alive - so turn is over
+      dc_p_fsm_set_state(DC_STATE_TURN_END);
+    } else {
+      global.dcg_object_animate = DC_OBJECT_HUMAN;	
+    }
+  }
+  if (dca_event == DC_EVENT_ANIMATE_ENDED) {
+      // User death animation finished - turn is over
+      dc_p_fsm_set_state(DC_STATE_TURN_END);
   }
 }
 function dc_p_fsm_turn_end(dca_event) {
@@ -868,10 +911,21 @@ function dc_p_fsm_turn_end(dca_event) {
 }
 function dc_p_fsm_room_end(dca_event) {
   if (dca_event == DC_EVENT_ENTER_STATE) {
-    var tmp = call_later(1.5, time_source_units_seconds, dc_p_fsm_room_end2);
+    var px = (2 * global.dcg_grid_cell_width) + global.dcg_grid_min_px;  // At (2,4)
+    var py = (4 * global.dcg_grid_cell_height) + global.dcg_grid_min_py;
+    var banner = instance_create_layer(px, py,  "Instances_1", obj_banner);
+    if (!global.dcg_human_alive) {
+      banner.sprite_index = spr_bannerFail;
+      var human = dc_p_find_instance(DC_OBJECT_HUMAN, 0);
+      if (human != noone) human.sprite_index = spr_clear	
+    } else {
+      banner.sprite_index = spr_bannerSuccess;
+    }	  
+    var tmp = call_later(5, time_source_units_seconds, dc_p_fsm_room_end2);
   }
 }
 function dc_p_fsm_room_end2() {
+  instance_destroy(obj_banner);
   // Revert any pitch change in tracks
   audio_sound_pitch(loopDrone, 1);
   audio_sound_pitch(loopMissile, 1);
@@ -968,7 +1022,7 @@ function dc_p_fsm_enemies_reposition() {
   }
 
   var curr_abs_smallest_range = global.dcg_abs_smallest_range;
-  var tooClose = 1;
+  var tooClose = 2;
   var pitch_mult = global.dcg_pitch_mult;  
     if ((prev_abs_smallest_range > tooClose) && (curr_abs_smallest_range <= tooClose) && (pitch_mult <= 1.0)) {
       // Increase pitch by a semitone
@@ -1085,6 +1139,14 @@ function dc_p_button_some(dca_drone_onoff, dca_laser_onoff, dca_field_onoff, dca
   dc_p_button_one(DC_ACTION_MISSILE_MOVE, dca_missile_onoff);
   dc_p_button_control();
 }
+function dc_p_button_double_dash() {
+  // dc_p_button_one(DC_ACTION_DRONE_MOVE, ??);  // Leave drone move as was
+  dc_p_button_one(DC_ACTION_DRONE_LASER, false);
+  dc_p_button_one(DC_ACTION_DRONE_FIELD, false);
+  dc_p_button_one(DC_ACTION_DRONE_HUMAN, false);
+  dc_p_button_one(DC_ACTION_MISSILE_MOVE, true);
+  dc_p_button_control();
+}
 function dc_p_button_room_start_begin() {
   // All buttons available (though human button only lights up if adjacent to drone)
   dc_p_button_some(true, true, true, true, true);
@@ -1104,14 +1166,24 @@ function dc_p_button_user_select_begin() {
   // object sel_base/move goes back to drone BUT object action only DRONE_MOVE if move still available
   // otherwise default becomes DRONE_LASER
   //
-  global.dcg_object_sel_base = DC_OBJECT_DRONE;
+  var double_dash = (1 << DC_ACTION_MISSILE_MOVE) | (1 << DC_ACTION_DRONE_MOVE);
   global.dcg_object_move = DC_OBJECT_NONE;
-  if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_MOVE) & 1) == 1) {
+  if (global.dcg_button_avail_mask == double_dash) {
+    global.dcg_object_sel_base = DC_OBJECT_MISSILE;
+    global.dcg_object_move = DC_OBJECT_MISSILE;
+    global.dcg_object_action = DC_ACTION_MISSILE_MOVE;
+  } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_MOVE) & 1) == 1) {
+    global.dcg_object_sel_base = DC_OBJECT_DRONE;
     global.dcg_object_move = DC_OBJECT_DRONE;
     global.dcg_object_action = DC_ACTION_DRONE_MOVE;
   } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_LASER) & 1) == 1) {
+    global.dcg_object_sel_base = DC_OBJECT_DRONE;
     global.dcg_object_move = DC_OBJECT_LASER;
     global.dcg_object_action = DC_ACTION_DRONE_LASER;
+  } else if (((global.dcg_button_avail_mask >> DC_ACTION_MISSILE_MOVE) & 1) == 1) {
+    global.dcg_object_sel_base = DC_OBJECT_MISSILE;
+    global.dcg_object_move = DC_OBJECT_MISSILE;
+    global.dcg_object_action = DC_ACTION_MISSILE_MOVE;
   }
   // Invalidate sel1
   global.dcg_sel1_gx = -1;
@@ -1186,27 +1258,30 @@ function dc_p_find_enemy_best_path(dca_monst, dca_array_a, dca_array_b, dca_ctrl
   var smallest_range = original_range;
   var smallest_range_gx = -1;
   var smallest_range_gy = -1;
+  // Search for path in order W E N S NW NE SW SE
+  var dxtab = [ -1,  1,  0,  0, -1,  1, -1,  1 ];
+  var dytab = [  0,  0, -1,  1, -1, -1,  1,  1 ];
   // If monster is on a cell with range 0 (eg a FIELDed cell) then it is 'frozen' and can not move!
   if (original_range == 0) return false;
-  for (var dx = -1; dx <= 1; dx++) {
-    for (var dy = -1; dy <= 1; dy++) {
-      if ((dx == 0) && (dy == 0)) continue;
-      // For all 8 neighbours
-      if ( ((gx + dx) >= 0) && ((gx + dx) < global.dcg_grid_x_cells) &&
-           ((gy + dy) >= 0) && ((gy + dy) < global.dcg_grid_y_cells) ) {
-        var range = dca_array_a[@ gx + dx, gy + dy];
-        // Don't move onto human cell or one containing another enemy
-        if ((range == 0) || (range >= 9000000)) continue;
-        if (range < smallest_range) {
-          smallest_range_gx = gx + dx;
-          smallest_range_gy = gy + dy;
-          smallest_range = range;
-        } else if (range == smallest_range) {
-          if (dca_ctrl == DC_CTRL_RETURN_IF_NO_SINGLE_BEST_PATH) return false;
-          if (dca_ctrl == DC_CTRL_USE_FIRST_BEST_PATH) continue;
-          smallest_range_gx = gx + dx;
-          smallest_range_gy = gy + dy;
-        }
+  for (var i = 0; i < 8; i++) {
+    var dx = dxtab[i];
+    var dy = dytab[i];
+    if ((dx == 0) && (dy == 0)) continue;  // Just in case
+    // For all 8 neighbours
+    if ( ((gx + dx) >= 0) && ((gx + dx) < global.dcg_grid_x_cells) &&
+         ((gy + dy) >= 0) && ((gy + dy) < global.dcg_grid_y_cells) ) {
+      var range = dca_array_a[@ gx + dx, gy + dy];
+      // Don't move onto human cell or one containing another enemy
+      if ((range == 0) || (range >= 9000000)) continue;
+      if (range < smallest_range) {
+        smallest_range_gx = gx + dx;
+        smallest_range_gy = gy + dy;
+        smallest_range = range;
+      } else if (range == smallest_range) {
+        if (dca_ctrl == DC_CTRL_RETURN_IF_NO_SINGLE_BEST_PATH) return false;
+        if (dca_ctrl == DC_CTRL_USE_FIRST_BEST_PATH) continue;
+        smallest_range_gx = gx + dx;
+        smallest_range_gy = gy + dy;
       }
     }
   }
@@ -1237,10 +1312,12 @@ function dc_p_update_enemy_nxt(dca_monst) {
   if (!ok2) {
     // Here we're using the DC_OBJECT_ENEMY1 grid
     // Pass in ctrl = 0 (DC_CTRL_NONE) for even monsters, 1 (DC_CTRL_USE_FIRST_BEST_PATH) for odd
+    // (pick 0/1 using (dca_monst.dci_which % 2)
     // This mean a given monster will, when there are multiple best paths, deterministically
     // select the first one found or the last one found.
+    // (NB. ***** This causes 'weird' paths - so just always use first best path *****)
     var ok1 = dc_p_find_enemy_best_path(dca_monst, global.dcg_range_grid1, global.dcg_range_grid2,
-                                        (dca_monst.dci_which % 2));
+                                        DC_CTRL_USE_FIRST_BEST_PATH);
   }
   with (dca_monst) {
     return ((dci_now_gx != dci_nxt_gx) || (dci_now_gy != dci_nxt_gy));
@@ -1263,6 +1340,7 @@ function dc_p_enemy_fires_bullet(dca_monst) {
   var F = dc_p_find_instance(DC_OBJECT_FIELD, 0);
   var B = instance_create_layer(dca_monst.x, dca_monst.y, "Instances_1", obj_bullet);
   if ((F == noone) || (B == noone)) return false;
+
   B.dci_obj_state = DC_OBJSTATE_ALIVE;
   B.dci_obj_type = DC_OBJECT_NONE;
   B.dci_which = 999;
@@ -1278,10 +1356,12 @@ function dc_p_enemy_fires_bullet(dca_monst) {
     // and also mark human as dead
     B.dci_nxt_gx = H.dci_now_gx;
     B.dci_nxt_gy = H.dci_now_gy;
-    // TODO: Need Human dying animation
     H.dci_obj_state = DC_OBJSTATE_DYING;
     global.dcg_human_alive = false;
   }
+  // Setup projectile enemy firing animation
+  dca_monst.sprite_index = spr_enemyprojectileattacking;
+    
   return ((B.dci_now_gx != B.dci_nxt_gx) || (B.dci_now_gy != B.dci_nxt_gy));
 }
 function dc_p_set_speed_direction(dca_spd, dca_kill) {
@@ -1327,8 +1407,10 @@ function dc_p_dock_undock_missile(dca_missile_move) {
     } else if (missile.sprite_index == spr_clear) {
 	if (dca_missile_move) {
 	    // Missile was docked but has now moved out of drone
-	    missile.sprite_index = spr_missileidle1;  // Reinstate missile sprite    
+	    missile.sprite_index = spr_missileidle1;  // Reinstate missile sprite
 	    audio_sound_gain(loopMissile, 1, 100);  // Gain 1 (in 100ms) - missile noises again
+	    global.dcg_object_action = DC_ACTION_NONE;  // Clear action to allow missile 'double dash'
+	    dc_p_button_double_dash();  // But disable other actions
 	} else {
 	    // Missile is docked in drone and drone has moved so mimic movement
 	    missile.dci_now_gx = drone.dci_now_gx;
@@ -1359,15 +1441,26 @@ function dc_step_missile() {
     dc_p_dock_undock_missile(true);
     dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
+
+function dc_step_human_end() {
+    if (global.dcg_state == DC_STATE_USER_ANIMATE_DYING) {
+	image_speed = 0;
+	dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+    }
+}
 function dc_step_human() {
-  if (global.dcg_state != DC_STATE_USER_ANIMATE) return;  // Must be in STATE UserAnimate
-  if (global.dcg_object_animate != DC_OBJECT_HUMAN) return;  // Must be animating HUMAN
-  var stopped = dc_p_set_speed_direction(3, false);
-  // Humans go via the drone gx/gy, in which case maybe they've not really stoppped
-  if ((stopped) && (dc_p_go_via(self))) stopped = false;
-  if (!stopped) return;
-  dc_p_clear_via(self);
-  dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+    if (global.dcg_object_animate != DC_OBJECT_HUMAN) return;  // Must be animating HUMAN
+    if (global.dcg_state == DC_STATE_USER_ANIMATE) {
+	var stopped = dc_p_set_speed_direction(3, false);
+	// Humans go via the drone gx/gy, in which case maybe they've not really stoppped
+	if ((stopped) && (dc_p_go_via(self))) stopped = false;
+	if (!stopped) return;
+	dc_p_clear_via(self);
+	dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+    } else if (global.dcg_state == DC_STATE_USER_ANIMATE_DYING) {
+	sprite_index = spr_human11dying;
+	// var tmp = call_later(2.5, time_source_units_seconds, dc_step_human_end);  // 3 sec animation
+    }
 }
 
 function dc_step_laser_end() {
@@ -1418,6 +1511,7 @@ function dc_step_field() {
   sprite_index = spr_fieldedtile;
   dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
 }
+
 function dc_step_enemy_end() {
   if ((global.dcg_state == DC_STATE_USER_ANIMATE_HIT) && (dci_obj_state == DC_OBJSTATE_DYING)) {
     // Called on amimate end event
@@ -1431,6 +1525,12 @@ function dc_step_enemy_end() {
 	sprite_index = spr_enemyprojectiledead;
 	global.dcg_enemies_n_projectile--;
 	if (global.dcg_enemies_n_projectile == 0) audio_sound_gain(loopProjectileEnemy, 0, 100);  // 100ms
+    }
+    dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
+
+  } else if (global.dcg_state == DC_STATE_ENEMY_ANIMATE_BULLETS) {
+    if (sprite_index == spr_enemyprojectileattacking) {
+      sprite_index = spr_enemyprojectileidle;
     }
     dc_p_fsm(DC_EVENT_ANIMATE_ENDED);
   }
