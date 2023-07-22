@@ -19,5 +19,5 @@
   "sampleRate": 48000,
   "soundFile": "loopProjectileEnemy.wav",
   "type": 1,
-  "volume": 1.0,
+  "volume": 0.9,
 }
