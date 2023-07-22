@@ -1381,6 +1381,8 @@ function dc_p_set_speed_direction(dca_spd, dca_kill) {
     global.dcg_inst_grid[dci_now_gx, dci_now_gy] = self;  // Place at new pos
     global.dcg_object_grid[dci_now_gx, dci_now_gy] |= (1<<dci_obj_type);
     speed = 0;
+    x = nxt_px;
+    y = nxt_py;
   } else {
     speed = min(pdist, dca_spd);  // This stops the object oscillating at its endpoint
     direction = point_direction(x, y, nxt_px, nxt_py);
