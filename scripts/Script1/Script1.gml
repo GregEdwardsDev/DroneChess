@@ -142,13 +142,14 @@ function dc_p_initialise_room_globals() {
   // For each action type maintain a max distance that selection lines are allowed to extend
   global.dcg_max_distance[0] = 0;
   // Track last stimulus used in calls to dc_p_set_available_tiles
-  global.dcg_s_a_t_start_gx = -1;
-  global.dcg_s_a_t_start_gy = -1;
-  global.dcg_s_a_t_lim_obj_mask = 0;
-  global.dcg_s_a_t_max_distance = 0;
-  global.dcg_s_a_t_end_gx[0] = -1;
-  global.dcg_s_a_t_end_gy[0] = -1;
-  global.dcg_s_a_t_corner = noone;
+  global.dcg_last_start_gx = -1;
+  global.dcg_last_start_gy = -1;
+  global.dcg_last_lim_obj_mask = 0;
+  global.dcg_last_max_distance = 0;
+  global.dcg_last_end_gx[0] = -1;
+  global.dcg_last_end_gy[0] = -1;
+  global.dcg_last_corner0 = noone;
+  global.dcg_last_corner1 = noone;
 }
 
 
@@ -1612,13 +1613,13 @@ function dc_step_bullet() {
 // EVENT HANDLERS and EVENT HANDLER UTILITY FUNCTIONS
 //
 function dc_p_set_available_tiles(dca_start_gx, dca_start_gy, dca_lim_obj_mask, dca_max_distance, dca_lighton) {
-    // show_debug_message("dc_p_s_a_t: gx={0} gy={1} mask={2} dist={3} onoff={4)",
+    // show_debug_message("dc_p_last: gx={0} gy={1} mask={2} dist={3} onoff={4)",
     //                     dca_start_gx, dca_start_gy, dca_lim_obj_mask, dca_max_distance, dca_lighton);
     if ((dca_start_gx < -1) || (dca_start_gy < -1)) return;
-    global.dcg_s_a_t_start_gx = dca_start_gx;
-    global.dcg_s_a_t_start_gy = dca_start_gy;
-    global.dcg_s_a_t_lim_obj_mask = dca_lim_obj_mask;
-    global.dcg_s_a_t_max_distance = dca_max_distance;
+    global.dcg_last_start_gx = dca_start_gx;
+    global.dcg_last_start_gy = dca_start_gy;
+    global.dcg_last_lim_obj_mask = dca_lim_obj_mask;
+    global.dcg_last_max_distance = dca_max_distance;
     
     // Switch all tiles radiating from start_gx/gy to indicate potential available moves
     for (var delta_gx = -1; delta_gx <= 1; delta_gx++) {
@@ -1645,8 +1646,8 @@ function dc_p_set_available_tiles(dca_start_gx, dca_start_gy, dca_lim_obj_mask, 
 		    var avail = global.dcg_available_grid[tmp_gx, tmp_gy];
 		    avail.sprite_index = (dca_lighton) ?spr_tileavailable :spr_clear;
 		    // Stash end-point of lines in all directions
-		    global.dcg_s_a_t_gx[dir8] = tmp_gx;
-		    global.dcg_s_a_t_gy[dir8] = tmp_gy;
+		    global.dcg_last_gx[dir8] = tmp_gx;
+		    global.dcg_last_gy[dir8] = tmp_gy;
 		    // show_debug_message("Avail[{0},{1}]=true", tmp_gx, tmp_gy);
 		}
 	    }
@@ -1654,14 +1655,14 @@ function dc_p_set_available_tiles(dca_start_gx, dca_start_gy, dca_lim_obj_mask, 
     }
 }
 function dc_p_clear_available_tiles() {
-    dc_p_set_available_tiles(global.dcg_s_a_t_start_gx, global.dcg_s_a_t_start_gy,
-			     global.dcg_s_a_t_lim_obj_mask, global.dcg_s_a_t_max_distance, false);
-    var corner = global.dcg_corner_grid[global.dcg_s_a_t_start_gx, global.dcg_s_a_t_start_gy];
+    dc_p_set_available_tiles(global.dcg_last_start_gx, global.dcg_last_start_gy,
+			     global.dcg_last_lim_obj_mask, global.dcg_last_max_distance, false);
+    var corner = global.dcg_corner_grid[global.dcg_last_start_gx, global.dcg_last_start_gy];
     corner.sprite_index = spr_clear;
-    global.dcg_s_a_t_start_gx = -1;
-    global.dcg_s_a_t_start_gy = -1;
-    global.dcg_s_a_t_lim_obj_mask = 0;
-    global.dcg_s_a_t_max_distance = 0;
+    global.dcg_last_start_gx = -1;
+    global.dcg_last_start_gy = -1;
+    global.dcg_last_lim_obj_mask = 0;
+    global.dcg_last_max_distance = 0;
 }
 
 
@@ -1691,41 +1692,69 @@ function dc_ev_tile_action(dca_mouse_px, dca_mouse_py, dca_ui_action) {
     var mouse_gy = dc_p_get_gy(dca_mouse_py);
     if ((mouse_gx < 0) || (mouse_gy < 0)) return;
 
+    // Figure out what colour to draw corners
     var obj_act = global.dcg_object_action;
+    var attacking = ((obj_act == DC_ACTION_DRONE_LASER) || (obj_act == DC_ACTION_MISSILE_MOVE));
+    var spr_redblue = attacking ?spr_cornerRed :spr_cornerBlue;
+    
+    // First corner is around tile we've just entered
+    var corner0 = global.dcg_corner_grid[mouse_gx, mouse_gy];    
+    var available0 = global.dcg_available_grid[mouse_gx, mouse_gy];
+    if ((available0 == noone) || (corner0 == noone)) return;
+    var is_avail0 = (available0.sprite_index == spr_tileavailable);
+    var is_base0 = ((mouse_gx == global.dcg_sel0_gx) && (mouse_gy == global.dcg_sel0_gy));
+    var is_avail = is_avail0;
+    // Second corner only used if action is drone firing laser
+    var corner1 = noone;
+    var available1 = noone;
+    var is_avail1 = false;
+    var is_base1 = false;
+
     if ((global.dcg_limit_obj_mask[obj_act] == 0) &&
 	(global.dcg_max_distance[obj_act] > global.dcg_grid_max_distance)) {
 	// If action has unlimited range then pretend mouse is at endpoint of line
 	var dir8 = dc_p_direction8(global.dcg_sel0_gx, global.dcg_sel0_gy, mouse_gx, mouse_gy);
 	if (dir8 > 0) {
-	    mouse_gx = global.dcg_s_a_t_gx[dir8];
-	    mouse_gy = global.dcg_s_a_t_gy[dir8];
+	    mouse_gx = global.dcg_last_gx[dir8];
+	    mouse_gy = global.dcg_last_gy[dir8];
+	    // Second corner is lit around tile at endpoint of line	   
+	    corner1 = global.dcg_corner_grid[mouse_gx, mouse_gy];    
+	    available1 = global.dcg_available_grid[mouse_gx, mouse_gy];
+	    if ((available1 == noone) || (corner1 == noone)) return;
+	    is_avail1 = (available1.sprite_index == spr_tileavailable);
+	    is_base1 = ((mouse_gx == global.dcg_sel0_gx) && (mouse_gy == global.dcg_sel0_gy));
+	    is_avail = is_avail1;
 	}
     }
-    available = global.dcg_available_grid[mouse_gx, mouse_gy];
-    corner = global.dcg_corner_grid[mouse_gx, mouse_gy];
-    if ((available == noone) || (corner == noone)) return;
-
-    var is_avail = (available.sprite_index == spr_tileavailable);
-    var is_base = ((mouse_gx == global.dcg_sel0_gx) && (mouse_gy == global.dcg_sel0_gy));
-    var attacking = ((obj_act == DC_ACTION_DRONE_LASER) || (obj_act == DC_ACTION_MISSILE_MOVE));
-    var spr_redblue = attacking ?spr_cornerRed :spr_cornerBlue;
 
     if (dca_ui_action == DC_ACTION_ENTER) {
-	if ((global.dcg_s_a_t_corner != noone) && (global.dcg_s_a_t_corner != corner)) {
-	    // Clear last corner we lit
-	    global.dcg_s_a_t_corner.sprite_index = spr_clear;
-	    global.dcg_s_a_t_corner = noone;
+	// Clear down last corners we lit up
+	if ((global.dcg_last_corner0 != noone) &&
+	    (global.dcg_last_corner0 != corner0) && (global.dcg_last_corner0 != corner1)) {
+	    global.dcg_last_corner0.sprite_index = spr_clear;
+	    global.dcg_last_corner0 = noone;
 	}
-	if (is_avail && !is_base) {
-	    // Light up new corner and remember where
-	    corner.sprite_index = spr_redblue;
-	    global.dcg_s_a_t_corner = corner;
+	if ((global.dcg_last_corner1 != noone) &&
+	    (global.dcg_last_corner1 != corner0) && (global.dcg_last_corner1 != corner1)) {
+	    global.dcg_last_corner1.sprite_index = spr_clear;
+	    global.dcg_last_corner1 = noone;
+	}
+	// Light up new corners and remember where
+	if ((!is_base0) && (corner0 != noone)) {
+	    corner0.sprite_index = (is_avail0) ?spr_redblue :spr_cornerGrey;
+	    global.dcg_last_corner0 = corner0;
+	}
+	if ((!is_base1) && (corner1 != noone)) {
+	    corner1.sprite_index = (is_avail1) ?spr_redblue :spr_cornerGrey;
+	    global.dcg_last_corner1 = corner1;
 	}
     } else if ((dca_ui_action == DC_ACTION_CLICK) && (is_avail)) {
 	global.dcg_sel1_gx = mouse_gx;
 	global.dcg_sel1_gy = mouse_gy;
-	corner.sprite_index = spr_clear;
-	global.dcg_s_a_t_corner = noone;
+	if (corner0 != noone) corner0.sprite_index = spr_clear;
+	if (corner1 != noone) corner1.sprite_index = spr_clear;
+	global.dcg_last_corner0 = noone;
+	global.dcg_last_corner1 = noone;
 
 	// Setup nxt_gx/gy coords from sel1_gx/gy
 	var inst = dc_p_find_instance(global.dcg_object_move, 0);
