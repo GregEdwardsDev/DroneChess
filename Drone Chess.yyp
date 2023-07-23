@@ -69,6 +69,7 @@
     {"id":{"name":"obj_buttonmissile","path":"objects/obj_buttonmissile/obj_buttonmissile.yy",},},
     {"id":{"name":"spr_laserSlash","path":"sprites/spr_laserSlash/spr_laserSlash.yy",},},
     {"id":{"name":"spr_tileavailable","path":"sprites/spr_tileavailable/spr_tileavailable.yy",},},
+    {"id":{"name":"obj_tile","path":"objects/obj_tile/obj_tile.yy",},},
     {"id":{"name":"Level1","path":"rooms/Level1/Level1.yy",},},
     {"id":{"name":"obj_wallSW","path":"objects/obj_wallSW/obj_wallSW.yy",},},
     {"id":{"name":"spr_missilerotate","path":"sprites/spr_missilerotate/spr_missilerotate.yy",},},

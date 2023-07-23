@@ -1,3 +1,6 @@
 /// @description Insert description here
 // You can write your code in this editor
-// sprite_index = spr_droneidleselected;
+dc_ev_tile_action(x, y, DC_ACTION_CLICK);
+
+
+

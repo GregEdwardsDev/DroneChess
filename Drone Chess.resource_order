@@ -52,6 +52,7 @@
     {"name":"obj_buttonmissile","order":33,"path":"objects/obj_buttonmissile/obj_buttonmissile.yy",},
     {"name":"spr_laserSlash","order":132,"path":"sprites/spr_laserSlash/spr_laserSlash.yy",},
     {"name":"spr_tileavailable","order":117,"path":"sprites/spr_tileavailable/spr_tileavailable.yy",},
+    {"name":"obj_tile","order":51,"path":"objects/obj_tile/obj_tile.yy",},
     {"name":"Level1","order":6,"path":"rooms/Level1/Level1.yy",},
     {"name":"obj_wallSW","order":25,"path":"objects/obj_wallSW/obj_wallSW.yy",},
     {"name":"spr_missilerotate","order":30,"path":"sprites/spr_missilerotate/spr_missilerotate.yy",},

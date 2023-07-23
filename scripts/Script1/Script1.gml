@@ -28,6 +28,8 @@ function dc_p_initialise_room_globals() {
   global.dcg_tile_grid_built = false;
   global.dcg_wall_grid[0,0] = false;
   global.dcg_tile_grid[0,0] = noone;
+  global.dcg_available_grid[0,0] = noone;
+  global.dcg_corner_grid[0,0] = noone;
   global.dcg_inst_grid[0,0] = noone;
   global.dcg_object_grid[0,0] = 0;
   global.dcg_range_grid1[0,0] = 0;
@@ -38,6 +40,7 @@ function dc_p_initialise_room_globals() {
 
   // Stuff to map grid x/y to pixel x/y and vice versa
   global.dcg_grid_invalid = 999;
+  global.dcg_grid_max_distance = 12;
   global.dcg_grid_x_cells = 12;
   global.dcg_grid_y_cells = 12;
   global.dcg_grid_cell_width = 32;
@@ -138,6 +141,14 @@ function dc_p_initialise_room_globals() {
   global.dcg_limit_obj_mask[0] = 0;
   // For each action type maintain a max distance that selection lines are allowed to extend
   global.dcg_max_distance[0] = 0;
+  // Track last stimulus used in calls to dc_p_set_available_tiles
+  global.dcg_s_a_t_start_gx = -1;
+  global.dcg_s_a_t_start_gy = -1;
+  global.dcg_s_a_t_lim_obj_mask = 0;
+  global.dcg_s_a_t_max_distance = 0;
+  global.dcg_s_a_t_end_gx[0] = -1;
+  global.dcg_s_a_t_end_gy[0] = -1;
+  global.dcg_s_a_t_corner = noone;
 }
 
 
@@ -296,16 +307,25 @@ function dc_p_find_walls() {
   global.dcg_wall_grid_built = true;
 }
 function dc_p_make_tile_grid() {
-  if (global.dcg_tile_grid_built) return;
-  for (var i = 0; i < global.dcg_grid_x_cells; i++) {
-    var px = (i * global.dcg_grid_cell_width) + global.dcg_grid_min_px;
-    for (var j = 0; j < global.dcg_grid_y_cells; j++) {
-      var py = (j * global.dcg_grid_cell_height) + global.dcg_grid_min_py;
-      var inst = instance_nearest(px, py, obj_tilewhite);
-      global.dcg_tile_grid[i, j] = inst;
+    if (global.dcg_tile_grid_built) return;
+    for (var i = 0; i < global.dcg_grid_x_cells; i++) {
+	var px = (i * global.dcg_grid_cell_width) + global.dcg_grid_min_px;
+	for (var j = 0; j < global.dcg_grid_y_cells; j++) {
+	    var py = (j * global.dcg_grid_cell_height) + global.dcg_grid_min_py;
+	    // obj_tile is parent of obj_tilewhite and obj_tilegrey
+	    var inst = instance_nearest(px, py, obj_tile);
+	    global.dcg_tile_grid[i, j] = inst;
+	    // Now we dynamically create obj_tileavailable and obj_corners
+	    // in every tile, initially making them invisible
+	    var available = instance_create_layer(px, py, "Instances0_Background_UI_Available", obj_tileavailable);
+	    global.dcg_available_grid[i, j] = available;
+	    available.sprite_index = spr_clear;
+	    var corner = instance_create_layer(px, py, "Instances0_Background_UI_Corners", obj_corner);
+	    global.dcg_corner_grid[i, j] = corner;
+	    corner.sprite_index = spr_clear;
+	}
     }
-  }
-  global.dcg_tile_grid_built = true;
+    global.dcg_tile_grid_built = true;
 }
 function dc_p_make_object_grid() {
   // May repeatedly call this
@@ -548,6 +568,7 @@ function dc_p_find_delta(dca_a, dca_b) {
   if (delta > 0) return 1;
   return 0;  // a == b
 }
+
 function dc_p_selection_onoff(dca_start_gx, dca_start_gy, dca_end_gx, dca_end_gy, dca_lighton) {
   if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0)) return;  // Bail if no sel0
   if ((dca_start_gx < 0) || (dca_start_gy < 0) || (dca_end_gx < 0) || (dca_end_gy < 0)) return;
@@ -736,72 +757,84 @@ function dc_p_fsm_game_start(dca_event) {
   }
 }
 function dc_p_fsm_room_start(dca_event) {
-  if (dca_event == DC_EVENT_ENTER_STATE) {
-
-    show_debug_message("DEBUG: Initialising globals for room {0}", room_get_name(room));
-    dc_p_initialise_room_globals();
-
-    show_debug_message("DEBUG: Initialising room {0}", room_get_name(room));
-    dc_p_initialise_room();
-
-    dc_p_button_room_start_begin();
-
+    if (dca_event == DC_EVENT_ENTER_STATE) {
+	
+	show_debug_message("DEBUG: Initialising globals for room {0}", room_get_name(room));
+	dc_p_initialise_room_globals();
+	
+	show_debug_message("DEBUG: Initialising room {0}", room_get_name(room));
+	dc_p_initialise_room();
+	
+	dc_p_button_room_start_begin();
+    }
     dc_p_fsm_set_state(DC_STATE_TURN_START);
-  }
 }
 function dc_p_fsm_turn_start(dca_event) {
-  if (dca_event == DC_EVENT_ENTER_STATE) {
-
-    global.dcg_turn++;
-    global.dcg_field_used[global.dcg_turn % 2] = false;
-    global.dcg_human_used[global.dcg_turn % 2] = false;
-
-    dc_p_button_turn_start_begin();
-
-    dc_p_fsm_set_state(DC_STATE_USER_SELECT);
-  }
+    if (dca_event == DC_EVENT_ENTER_STATE) {
+	
+	global.dcg_turn++;
+	global.dcg_field_used[global.dcg_turn % 2] = false;
+	global.dcg_human_used[global.dcg_turn % 2] = false;
+	
+	dc_p_button_turn_start_begin();
+	
+	if (false) {
+	    var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+	    if (drone != noone) {
+		global.dcg_object_sel_base = DC_OBJECT_DRONE;
+		global.dcg_object_move = DC_OBJECT_DRONE;
+		global.dcg_object_action = DC_ACTION_DRONE_MOVE;
+		var lim_obj_mask = global.dcg_limit_obj_mask[DC_ACTION_DRONE_MOVE];	
+		var max_distance = global.dcg_max_distance[DC_ACTION_DRONE_MOVE];
+   		dc_p_set_available_tiles(drone.dci_now_gx, drone.dci_now_gy, lim_obj_mask, max_distance, true);				     
+	    }
+	}
+	
+	dc_p_fsm_set_state(DC_STATE_USER_SELECT);	    
+    }
 }
 function dc_p_fsm_user_select(dca_event) {
-  if (dca_event == DC_EVENT_ENTER_STATE) {
-    dc_p_make_object_grid();  // Track where everything is
-    dc_p_make_range_grids();  // TODO: REMOVE: HANDY FOR DEBUGGING THOUGH
-
-    dc_p_button_user_select_begin();
-  }
-  if ((dca_event == DC_EVENT_ENTER_STATE) || (dca_event == DC_EVENT_OBJECT_SELECTED)) {
-    var inst = dc_p_find_instance(global.dcg_object_sel_base, 0);
-    if (inst != noone) {
-      // show_debug_message("{0} at [{1},{2}]", dc_p_get_name(global.dcg_object_sel_base), inst.dci_now_gx, inst.dci_now_gy);
-      // Setup sel_base object gx/gy as sel0_gx/gy - might not be object we actually move
-      global.dcg_sel0_gx = inst.dci_now_gx;
-      global.dcg_sel0_gy = inst.dci_now_gy;
+    if (dca_event == DC_EVENT_ENTER_STATE) {
+	dc_p_make_object_grid();  // Track where everything is
+	// dc_p_make_range_grids();  // TODO: REMOVE: HANDY FOR DEBUGGING THOUGH
+	
+	dc_p_button_user_select_begin();
     }
-  }
-  if (dca_event == DC_EVENT_DEST_SELECTED) {
-    global.dcg_object_animate = global.dcg_object_move;
-
-    // Look along animating object's path and markup any enemies as HIT
-    global.dcg_enemies_dying = dc_p_fsm_maybe_hit_enemies();
-    global.dcg_enemies_alive -= global.dcg_enemies_dying;
-
-    dc_p_fsm_set_state(DC_STATE_USER_ANIMATE);
-  }
+    if ((dca_event == DC_EVENT_ENTER_STATE) || (dca_event == DC_EVENT_OBJECT_SELECTED)) {
+	
+	var inst = dc_p_find_instance(global.dcg_object_sel_base, 0);
+	if (inst != noone) {
+	    show_debug_message("{0} at [{1},{2}]", dc_p_get_name(global.dcg_object_sel_base), inst.dci_now_gx, inst.dci_now_gy);
+	    global.dcg_sel0_gx = inst.dci_now_gx;
+	    global.dcg_sel0_gy = inst.dci_now_gy;
+	}
+    }
+    if (dca_event == DC_EVENT_DEST_SELECTED) {
+	global.dcg_object_animate = global.dcg_object_move;
+	
+	// Look along animating object's path and markup any enemies as HIT
+	global.dcg_enemies_dying = dc_p_fsm_maybe_hit_enemies();
+	global.dcg_enemies_alive -= global.dcg_enemies_dying;
+	
+	dc_p_fsm_set_state(DC_STATE_USER_ANIMATE);
+    }
 }
 function dc_p_fsm_user_animate(dca_event) {
-  if (dca_event == DC_EVENT_ENTER_STATE) {
-    dc_p_button_display(0, 0);  // All buttons greyed
+    if (dca_event == DC_EVENT_ENTER_STATE) {
+	dc_p_button_display(0, 0);  // All buttons greyed
+	dc_p_clear_available_tiles(); // Clear tile availability
 
-    if (global.dcg_object_animate == DC_OBJECT_NONE) {
-      dca_event = DC_EVENT_ANIMATE_ENDED;
+	if (global.dcg_object_animate == DC_OBJECT_NONE) {
+	    dca_event = DC_EVENT_ANIMATE_ENDED;
+	}
     }
-  }
-  // Only a single object animating here
-  if (dca_event == DC_EVENT_ANIMATE_ENDED) {
-    global.dcg_object_animate = DC_OBJECT_NONE;
+    // Only a single object animating here
+    if (dca_event == DC_EVENT_ANIMATE_ENDED) {
+	global.dcg_object_animate = DC_OBJECT_NONE;
 
-    // User animation ended - maybe need to animate enemies dying
-    dc_p_fsm_set_state(DC_STATE_USER_ANIMATE_HIT);
-  }
+	// User animation ended - maybe need to animate enemies dying
+	dc_p_fsm_set_state(DC_STATE_USER_ANIMATE_HIT);
+    }
 }
 function dc_p_fsm_user_animate_hit(dca_event) {
   if (dca_event == DC_EVENT_ENTER_STATE) {
@@ -1148,6 +1181,9 @@ function dc_p_button_double_dash() {
   dc_p_button_control();
 }
 function dc_p_button_room_start_begin() {
+  global.dcg_object_sel_base = DC_OBJECT_DRONE;
+  global.dcg_object_move = DC_OBJECT_DRONE;
+  global.dcg_object_action = DC_ACTION_DRONE_MOVE;
   // All buttons available (though human button only lights up if adjacent to drone)
   dc_p_button_some(true, true, true, true, true);
 }
@@ -1161,34 +1197,47 @@ function dc_p_button_turn_start_begin() {
   dc_p_button_some(drone_ok, laser_ok, field_ok, human_ok, missile_ok);
 }
 function dc_p_button_user_select_begin() {
-  // Buttons available remain unchanged
-  //
-  // object sel_base/move goes back to drone BUT object action only DRONE_MOVE if move still available
-  // otherwise default becomes DRONE_LASER
-  //
-  var double_dash = (1 << DC_ACTION_MISSILE_MOVE) | (1 << DC_ACTION_DRONE_MOVE);
-  global.dcg_object_move = DC_OBJECT_NONE;
-  if (global.dcg_button_avail_mask == double_dash) {
-    global.dcg_object_sel_base = DC_OBJECT_MISSILE;
-    global.dcg_object_move = DC_OBJECT_MISSILE;
-    global.dcg_object_action = DC_ACTION_MISSILE_MOVE;
-  } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_MOVE) & 1) == 1) {
-    global.dcg_object_sel_base = DC_OBJECT_DRONE;
-    global.dcg_object_move = DC_OBJECT_DRONE;
-    global.dcg_object_action = DC_ACTION_DRONE_MOVE;
-  } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_LASER) & 1) == 1) {
-    global.dcg_object_sel_base = DC_OBJECT_DRONE;
-    global.dcg_object_move = DC_OBJECT_LASER;
-    global.dcg_object_action = DC_ACTION_DRONE_LASER;
-  } else if (((global.dcg_button_avail_mask >> DC_ACTION_MISSILE_MOVE) & 1) == 1) {
-    global.dcg_object_sel_base = DC_OBJECT_MISSILE;
-    global.dcg_object_move = DC_OBJECT_MISSILE;
-    global.dcg_object_action = DC_ACTION_MISSILE_MOVE;
-  }
-  // Invalidate sel1
-  global.dcg_sel1_gx = -1;
-  global.dcg_sel1_gy = -1;
-  dc_p_button_control();
+    // Buttons available remain unchanged
+    //
+    // object sel_base/move goes back to drone BUT object action only DRONE_MOVE if move still available
+    // otherwise default becomes DRONE_LASER
+    //
+    var double_dash = (1 << DC_ACTION_MISSILE_MOVE) | (1 << DC_ACTION_DRONE_MOVE);
+    global.dcg_object_move = DC_OBJECT_NONE;
+    if (global.dcg_button_avail_mask == double_dash) {
+	global.dcg_object_sel_base = DC_OBJECT_MISSILE;
+	global.dcg_object_move = DC_OBJECT_MISSILE;
+	global.dcg_object_action = DC_ACTION_MISSILE_MOVE;
+    } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_MOVE) & 1) == 1) {
+	global.dcg_object_sel_base = DC_OBJECT_DRONE;
+	global.dcg_object_move = DC_OBJECT_DRONE;
+	global.dcg_object_action = DC_ACTION_DRONE_MOVE;
+    } else if (((global.dcg_button_avail_mask >> DC_ACTION_DRONE_LASER) & 1) == 1) {
+	global.dcg_object_sel_base = DC_OBJECT_DRONE;
+	global.dcg_object_move = DC_OBJECT_LASER;
+	global.dcg_object_action = DC_ACTION_DRONE_LASER;
+    } else if (((global.dcg_button_avail_mask >> DC_ACTION_MISSILE_MOVE) & 1) == 1) {
+	global.dcg_object_sel_base = DC_OBJECT_MISSILE;
+	global.dcg_object_move = DC_OBJECT_MISSILE;
+	global.dcg_object_action = DC_ACTION_MISSILE_MOVE;
+    }
+
+    // Light up correct available tiles
+    var obj = dc_p_find_instance(global.dcg_object_sel_base, 0);
+    if (obj != noone) {
+	var obj_act = global.dcg_object_action;
+	var lim_obj_mask = global.dcg_limit_obj_mask[obj_act];	
+	var max_distance = global.dcg_max_distance[obj_act];	
+   	dc_p_set_available_tiles(obj.dci_now_gx, obj.dci_now_gy, lim_obj_mask, max_distance, true);
+	var attacking = ((obj_act == DC_ACTION_DRONE_LASER) || (obj_act == DC_ACTION_MISSILE_MOVE));
+	var spr_redblue = attacking ?spr_cornerRed :spr_cornerBlue;
+	corner = global.dcg_corner_grid[obj.dci_now_gx, obj.dci_now_gy];
+	if (corner != noone) corner.sprite_index = spr_redblue;
+    }
+    // Invalidate sel1
+    global.dcg_sel1_gx = -1;
+    global.dcg_sel1_gy = -1;
+    dc_p_button_control();
 }
 function dc_p_button_user_animations_complete() {
   var moves = (1<<DC_ACTION_DRONE_MOVE);
@@ -1562,14 +1611,243 @@ function dc_step_bullet() {
 //
 // EVENT HANDLERS and EVENT HANDLER UTILITY FUNCTIONS
 //
-function dc_p_clear_selection_line() {
+function dc_p_set_available_tiles(dca_start_gx, dca_start_gy, dca_lim_obj_mask, dca_max_distance, dca_lighton) {
+    // show_debug_message("dc_p_s_a_t: gx={0} gy={1} mask={2} dist={3} onoff={4)",
+    //                     dca_start_gx, dca_start_gy, dca_lim_obj_mask, dca_max_distance, dca_lighton);
+    if ((dca_start_gx < -1) || (dca_start_gy < -1)) return;
+    global.dcg_s_a_t_start_gx = dca_start_gx;
+    global.dcg_s_a_t_start_gy = dca_start_gy;
+    global.dcg_s_a_t_lim_obj_mask = dca_lim_obj_mask;
+    global.dcg_s_a_t_max_distance = dca_max_distance;
+    
+    // Switch all tiles radiating from start_gx/gy to indicate potential available moves
+    for (var delta_gx = -1; delta_gx <= 1; delta_gx++) {
+	for (var delta_gy = -1; delta_gy <= 1; delta_gy++) {
+	    if ((delta_gx == 0) && (delta_gy == 0)) continue;
+	    var dir8 = dc_p_direction8(99, 99, 99 + delta_gx, 99 + delta_gy); // Find direction (99 == arbitrary)
+	    
+	    // Apply delta_gx delta_gy to start_gx start_gy until find obstacle or find edge grid
+	    var steps = 0;
+	    var tmp_gx = dca_start_gx;
+	    var tmp_gy = dca_start_gy;
+	    // show_debug_message("Start=[{0},{1}] Delta=[{2},{3}]", dca_start_gx, dca_start_gy, delta_gx, delta_gy);
+	    while (true) {
+		steps++;
+		tmp_gx += delta_gx;
+		tmp_gy += delta_gy;
+		if ((tmp_gx < 0) || (tmp_gx >= global.dcg_grid_x_cells) ||
+		    (tmp_gy < 0) || (tmp_gy >= global.dcg_grid_y_cells) ||
+		    ((global.dcg_object_grid[tmp_gx, tmp_gy] & dca_lim_obj_mask) != 0) ||
+		    (steps > dca_max_distance)) {
+		    // show_debug_message("Avail[{0},{1}]=false", tmp_gx, tmp_gy);
+		    break;
+		} else {
+		    var avail = global.dcg_available_grid[tmp_gx, tmp_gy];
+		    avail.sprite_index = (dca_lighton) ?spr_tileavailable :spr_clear;
+		    // Stash end-point of lines in all directions
+		    global.dcg_s_a_t_gx[dir8] = tmp_gx;
+		    global.dcg_s_a_t_gy[dir8] = tmp_gy;
+		    // show_debug_message("Avail[{0},{1}]=true", tmp_gx, tmp_gy);
+		}
+	    }
+	}
+    }
+}
+function dc_p_clear_available_tiles() {
+    dc_p_set_available_tiles(global.dcg_s_a_t_start_gx, global.dcg_s_a_t_start_gy,
+			     global.dcg_s_a_t_lim_obj_mask, global.dcg_s_a_t_max_distance, false);
+    var corner = global.dcg_corner_grid[global.dcg_s_a_t_start_gx, global.dcg_s_a_t_start_gy];
+    corner.sprite_index = spr_clear;
+    global.dcg_s_a_t_start_gx = -1;
+    global.dcg_s_a_t_start_gy = -1;
+    global.dcg_s_a_t_lim_obj_mask = 0;
+    global.dcg_s_a_t_max_distance = 0;
+}
+
+
+
+function dc_ev_select_dest_human(dca_human, dca_mouse_px, dca_mouse_py) {
+  // Human goes via drone gx/gy before going to sel1 gx/gy
+  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
+  if (drone == noone) return;
+  dca_human.dci_nxt_gx = drone.dci_now_gx;
+  dca_human.dci_nxt_gy = drone.dci_now_gy;
+  dca_human.dci_via_gx[0] = drone.dci_now_gx;
+  dca_human.dci_via_gy[0] = drone.dci_now_gy;
+  dca_human.dci_via_gx[1] = global.dcg_sel1_gx;
+  dca_human.dci_via_gy[1] = global.dcg_sel1_gy;
+}
+
+function dc_ev_tile_action(dca_mouse_px, dca_mouse_py, dca_ui_action) {
+    // Called on mouse release if on tile NOT on button - only does stuff if state is USER_SELECT
+    if (global.dcg_state != DC_STATE_USER_SELECT) return;
+    // Only does stuff if an object has been selected
+    if ((global.dcg_object_move < DC_OBJECT_DRONE) || (global.dcg_object_move > DC_OBJECT_FIELD)) return;
+    // Only does stuff if valid sel0
+    if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0)) return;
+
+    // Map mouse pixel position to grid position
+    var mouse_gx = dc_p_get_gx(dca_mouse_px);
+    var mouse_gy = dc_p_get_gy(dca_mouse_py);
+    if ((mouse_gx < 0) || (mouse_gy < 0)) return;
+
+    var obj_act = global.dcg_object_action;
+    if ((global.dcg_limit_obj_mask[obj_act] == 0) &&
+	(global.dcg_max_distance[obj_act] > global.dcg_grid_max_distance)) {
+	// If action has unlimited range then pretend mouse is at endpoint of line
+	var dir8 = dc_p_direction8(global.dcg_sel0_gx, global.dcg_sel0_gy, mouse_gx, mouse_gy);
+	if (dir8 > 0) {
+	    mouse_gx = global.dcg_s_a_t_gx[dir8];
+	    mouse_gy = global.dcg_s_a_t_gy[dir8];
+	}
+    }
+    available = global.dcg_available_grid[mouse_gx, mouse_gy];
+    corner = global.dcg_corner_grid[mouse_gx, mouse_gy];
+    if ((available == noone) || (corner == noone)) return;
+
+    var is_avail = (available.sprite_index == spr_tileavailable);
+    var is_base = ((mouse_gx == global.dcg_sel0_gx) && (mouse_gy == global.dcg_sel0_gy));
+    var attacking = ((obj_act == DC_ACTION_DRONE_LASER) || (obj_act == DC_ACTION_MISSILE_MOVE));
+    var spr_redblue = attacking ?spr_cornerRed :spr_cornerBlue;
+
+    if (dca_ui_action == DC_ACTION_ENTER) {
+	if ((global.dcg_s_a_t_corner != noone) && (global.dcg_s_a_t_corner != corner)) {
+	    // Clear last corner we lit
+	    global.dcg_s_a_t_corner.sprite_index = spr_clear;
+	    global.dcg_s_a_t_corner = noone;
+	}
+	if (is_avail && !is_base) {
+	    // Light up new corner and remember where
+	    corner.sprite_index = spr_redblue;
+	    global.dcg_s_a_t_corner = corner;
+	}
+    } else if ((dca_ui_action == DC_ACTION_CLICK) && (is_avail)) {
+	global.dcg_sel1_gx = mouse_gx;
+	global.dcg_sel1_gy = mouse_gy;
+	corner.sprite_index = spr_clear;
+	global.dcg_s_a_t_corner = noone;
+
+	// Setup nxt_gx/gy coords from sel1_gx/gy
+	var inst = dc_p_find_instance(global.dcg_object_move, 0);
+	if (inst != noone) {
+	    switch (inst.dci_obj_type) {
+	    case DC_OBJECT_HUMAN:
+		dc_ev_select_dest_human(inst, dca_mouse_px, dca_mouse_py);
+		break;
+	    default:
+		inst.dci_nxt_gx = global.dcg_sel1_gx;
+		inst.dci_nxt_gy = global.dcg_sel1_gy;
+		break;
+	    }
+	}
+	// Report destination selected
+	dc_p_fsm(DC_EVENT_DEST_SELECTED);
+    }
+}	
+
+function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_off, dca_spr_hov, dca_spr_unav) {
+    // Called when any action button clicked - only does stuff if state is USER_SELECT
+    if (global.dcg_state != DC_STATE_USER_SELECT) return;
+    // Clear any existing selection line
+    // dc_p_clear_selection_line();
+    // Bail if this button's sprite has been set to the 'unavailable' sprite
+    if (sprite_index == dca_spr_unav) return;
+
+    if (dca_ui_action == DC_ACTION_ENTER) {
+	sprite_index = dca_spr_hov;
+	
+    } else if (dca_ui_action == DC_ACTION_CLICK) {
+	// If clicked action NOT already selected, DO select otherwise DO deselect
+	var cur_obj_act = global.dcg_object_action;
+	var cur_obj_sel_base = global.dcg_object_sel_base;
+	var new_obj_act = dca_obj_action;
+	if (cur_obj_act == new_obj_act) new_obj_act = DC_ACTION_DRONE_MOVE;  // Deselect ==> back to drone move
+	
+	// Select
+	var new_obj_move = DC_OBJECT_NONE;
+	var new_obj_sel_base = DC_OBJECT_NONE;
+	switch (new_obj_act) {
+	case DC_ACTION_MISSILE_MOVE: new_obj_sel_base = DC_OBJECT_MISSILE; new_obj_move = DC_OBJECT_MISSILE; break;
+	case DC_ACTION_DRONE_MOVE:   new_obj_sel_base = DC_OBJECT_DRONE;   new_obj_move = DC_OBJECT_DRONE; break;
+	case DC_ACTION_DRONE_HUMAN:  new_obj_sel_base = DC_OBJECT_DRONE;   new_obj_move = DC_OBJECT_HUMAN; break;
+	case DC_ACTION_DRONE_LASER:  new_obj_sel_base = DC_OBJECT_DRONE;   new_obj_move = DC_OBJECT_LASER; break;
+	case DC_ACTION_DRONE_FIELD:  new_obj_sel_base = DC_OBJECT_DRONE;   new_obj_move = DC_OBJECT_FIELD; break;
+	case DC_ACTION_NONE: break;
+	default: break;
+	}
+	if (cur_obj_act != new_obj_act) {
+	    dc_p_clear_available_tiles();  // Also clears corner 
+
+	    if (new_obj_sel_base != DC_OBJECT_NONE) {
+		var new_obj = dc_p_find_instance(new_obj_sel_base, 0);
+		if (new_obj != noone) {
+	    	    var lim_obj_mask = global.dcg_limit_obj_mask[new_obj_act];	
+		    var max_distance = global.dcg_max_distance[new_obj_act];
+	    	    dc_p_set_available_tiles(new_obj.dci_now_gx, new_obj.dci_now_gy, lim_obj_mask, max_distance, true);
+
+		    var attacking = ((new_obj_act == DC_ACTION_DRONE_LASER) || (new_obj_act == DC_ACTION_MISSILE_MOVE));
+		    var spr_redblue = attacking ?spr_cornerRed :spr_cornerBlue;
+		    corner = global.dcg_corner_grid[new_obj.dci_now_gx, new_obj.dci_now_gy];
+		    if (corner != noone) corner.sprite_index = spr_redblue;
+		}
+	    }
+	}
+	global.dcg_object_sel_base = new_obj_sel_base;
+	global.dcg_object_move = new_obj_move;
+	global.dcg_object_action = new_obj_act;
+	
+	dc_p_button_control();
+	
+	dc_p_fsm(DC_EVENT_OBJECT_SELECTED);  // Report object selected
+	
+    } else if (dca_ui_action == DC_ACTION_EXIT) {
+	sprite_index = (dca_obj_action == global.dcg_object_action) ?dca_spr_on :dca_spr_off;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+//
+// EVENT HANDLERS and EVENT HANDLER UTILITY FUNCTIONS
+//
+function dc_old_ev_select_dest(dca_mouse_px, dca_mouse_py) {
+    // Called on mouse release if on tile NOT on button - only does stuff if state is USER_SELECT
+    if (global.dcg_state != DC_STATE_USER_SELECT) return;
+    // Only does stuff if an object has been selected
+    if ((global.dcg_object_move < DC_OBJECT_DRONE) || (global.dcg_object_move > DC_OBJECT_FIELD)) return;
+    // Only does stuff if valid sel0 and sel1
+    if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0) || (global.dcg_sel1_gx < 0) || (global.dcg_sel1_gy < 0)) return;
+    // Only does stuff if sel0 != sel1
+    if ((global.dcg_sel0_gx == global.dcg_sel1_gx) && (global.dcg_sel0_gy == global.dcg_sel1_gy)) return;
+    
+    // Setup nxt_gx/gy coords from sel1_gx/gy
+    var inst = dc_p_find_instance(global.dcg_object_move, 0);
+    if (inst != noone) {
+	switch (inst.dci_obj_type) {
+	case DC_OBJECT_HUMAN: dc_ev_select_dest_human(inst, dca_mouse_px, dca_mouse_py); break;
+	default: inst.dci_nxt_gx = global.dcg_sel1_gx; inst.dci_nxt_gy = global.dcg_sel1_gy; break;
+	}
+    }
+    // Report destination selected
+    dc_p_fsm(DC_EVENT_DEST_SELECTED);
+}
+function dc_old_p_clear_selection_line() {
   // Clear existing selection if we have one
   dc_p_selection_onoff(global.dcg_sel0_gx, global.dcg_sel0_gy, global.dcg_sel1_gx, global.dcg_sel1_gy, false);
   // Invalidate sel1
   global.dcg_sel1_gx = -1;
   global.dcg_sel1_gy = -1;
 }
-function dc_ev_draw_new_selection_line(dca_mouse_px, dca_mouse_py) {
+function dc_old_ev_draw_new_selection_line(dca_mouse_px, dca_mouse_py) {
   // CALLED when mouse enters any tile - only does stuff if state is Select
   if (global.dcg_state != DC_STATE_USER_SELECT) return;
 
@@ -1625,85 +1903,6 @@ function dc_ev_draw_new_selection_line(dca_mouse_px, dca_mouse_py) {
 
 
 
-function dc_ev_select_dest_human(dca_human, dca_mouse_px, dca_mouse_py) {
-  // Human goes via drone gx/gy before going to sel1 gx/gy
-  var drone = dc_p_find_instance(DC_OBJECT_DRONE, 0);
-  if (drone == noone) return;
-  dca_human.dci_nxt_gx = drone.dci_now_gx;
-  dca_human.dci_nxt_gy = drone.dci_now_gy;
-  dca_human.dci_via_gx[0] = drone.dci_now_gx;
-  dca_human.dci_via_gy[0] = drone.dci_now_gy;
-  dca_human.dci_via_gx[1] = global.dcg_sel1_gx;
-  dca_human.dci_via_gy[1] = global.dcg_sel1_gy;
-}
-function dc_ev_select_dest(dca_mouse_px, dca_mouse_py) {
-  // Called on mouse release if on tile NOT on button - only does stuff if state is USER_SELECT
-  if (global.dcg_state != DC_STATE_USER_SELECT) return;
-  // Only does stuff if an object has been selected
-  if ((global.dcg_object_move < DC_OBJECT_DRONE) || (global.dcg_object_move > DC_OBJECT_FIELD)) return;
-  // Only does stuff if valid sel0 and sel1
-  if ((global.dcg_sel0_gx < 0) || (global.dcg_sel0_gy < 0) || (global.dcg_sel1_gx < 0) || (global.dcg_sel1_gy < 0)) return;
-  // Only does stuff if sel0 != sel1
-  if ((global.dcg_sel0_gx == global.dcg_sel1_gx) && (global.dcg_sel0_gy == global.dcg_sel1_gy)) return;
-
-  // Clear existing selection - but leave sel1 as is until installed in selected object
-  dc_p_selection_onoff(global.dcg_sel0_gx, global.dcg_sel0_gy, global.dcg_sel1_gx, global.dcg_sel1_gy, false);
-
-  // Setup nxt_gx/gy coords from sel1_gx/gy
-  var inst = dc_p_find_instance(global.dcg_object_move, 0);
-  if (inst != noone) {
-    switch (inst.dci_obj_type) {
-      case DC_OBJECT_HUMAN: dc_ev_select_dest_human(inst, dca_mouse_px, dca_mouse_py); break;
-      default: inst.dci_nxt_gx = global.dcg_sel1_gx; inst.dci_nxt_gy = global.dcg_sel1_gy; break;
-    }
-  }
-  // Report destination selected
-  dc_p_fsm(DC_EVENT_DEST_SELECTED);
-}
-
-function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_off, dca_spr_hov, dca_spr_unav) {
-  // Called when any action button clicked - only does stuff if state is USER_SELECT
-  if (global.dcg_state != DC_STATE_USER_SELECT) return;
-  // Clear any existing selection line
-  dc_p_clear_selection_line();
-  // Bail if this button's sprite has been set to the 'unavailable' sprite
-  if (sprite_index == dca_spr_unav) return;
-
-  if (dca_ui_action == DC_ACTION_ENTER) {
-    sprite_index = dca_spr_hov;
-
-  } else if (dca_ui_action == DC_ACTION_CLICK) {
-    // If clicked action NOT already selected, DO select otherwise DO deselect
-    var cur_obj_act = global.dcg_object_action;
-    var new_obj_act = dca_obj_action;
-    if (cur_obj_act == new_obj_act) new_obj_act = DC_ACTION_NONE;  // Deselect ==> no action
-
-    // Select
-    var new_obj_move = DC_OBJECT_NONE;
-    var new_obj_sel_base = DC_OBJECT_NONE;
-    switch (new_obj_act) {
-      case DC_ACTION_MISSILE_MOVE: new_obj_sel_base = DC_OBJECT_MISSILE; new_obj_move = DC_OBJECT_MISSILE; break;
-      case DC_ACTION_DRONE_MOVE:   new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_DRONE; break;
-      case DC_ACTION_DRONE_HUMAN:  new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_HUMAN; break;
-      case DC_ACTION_DRONE_LASER:  new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_LASER; break;
-      case DC_ACTION_DRONE_FIELD:  new_obj_sel_base = DC_OBJECT_DRONE; new_obj_move = DC_OBJECT_FIELD; break;
-      case DC_ACTION_NONE: break;
-      default: break;
-    }
-    global.dcg_object_sel_base = new_obj_sel_base;
-    global.dcg_object_move = new_obj_move;
-    global.dcg_object_action = new_obj_act;
-
-    dc_p_button_control();
-
-    dc_p_fsm(DC_EVENT_OBJECT_SELECTED);  // Report object selected
-
-  } else if (dca_ui_action == DC_ACTION_EXIT) {
-    sprite_index = (dca_obj_action == global.dcg_object_action) ?dca_spr_on :dca_spr_off;
-  }
-}
-
-
 
 
 
@@ -1739,35 +1938,29 @@ function dc_ev_button_action(dca_obj_action, dca_ui_action, dca_spr_on, dca_spr_
 // 15. Field handling - DONE
 // 16. ProjectileEnemies move and fire in a turn - DONE
 // 16a. They will fire at human if on same line - bullets blocked by field though - DONE
+// 16b. Humans should die!! - DONE
+// 16b. They will fire at drone if on same line - bullets blocked by field though - DONE
+// 17a. Handle missile/drone at same location - use invisible missile sprite if so - DONE
+// 17b. Allow extra missile move if initial deploy from drone - DONE
+// 18. Terminology - Game > Level > Round > PlayerTurn(N) EnemyTurn(1)
+// 19. Add in AnimationEnd Event to stop monster 'dying' animation
+// 20. Add end game detection logic
 //
 //
-// THINGS LEFT TO DO:
-// 16b. Humans should die!!
-// 16b. They will fire at drone if on same line - bullets blocked by field though
-//
-// 17a. Support 'TurnEnd' button
-// 17b. Handle missile/drone at same location - use invisible missile sprite if so
-// 17c. Allow extra missile move if initial deploy from drone
-//
-// 18. Allow human to be hit by missile/laser ==> GameOver!
-// 19. Stop laser fire 'escaping' into UI
-//
-// 20. Terminology - Game > Level > Round > PlayerTurn(N) EnemyTurn(1)
-// 21. Add in AnimationEnd Event to stop monster 'dying' animation
-// 22. Add end game detection logic
-// 23. Add README
+// STILL TO DO:
+// 21. Allow human to be hit by missile/laser ==> GameOver!
+// 22. Stop laser fire 'escaping' into UI
+// 23. Support 'TurnEnd' button
 //
 //
-// MAYBE:
-// 24. Use int64
-// 25. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
-// 26. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
+// MAYBE ALSO:
+// 24. Add README
+// 25. Use int64
+// 26. Maybe munge gx|gy into a single gxy (1000gx+gy if debug, gx<<8|gy if not)
+// 27. Keep gxy within instance - use dci_now_gxy and dci_nxt_gxy instance vars
 //
-
-
 //
 // AUDIO:
-//
 // 0. ogg, mp3 or wav
 // 1. Upto 128 sounds
 // 2. voice = audio_play_sound(snd_Asset, 10, false);  // asset, pri, loop?
