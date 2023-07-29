@@ -1031,18 +1031,15 @@ function dc_p_fsm_maybe_hit_enemies() {
 	if ((tmp_gx < 0) || (tmp_gx >= global.dcg_grid_x_cells) || (tmp_gy < 0) || (tmp_gy >= global.dcg_grid_y_cells))
 	    break;
 	var pinst = global.dcg_inst_grid[tmp_gx, tmp_gy];
-	if (pinst != noone) {
-	    var enemy = ( (pinst.dci_obj_type == DC_OBJECT_ENEMY1) || (pinst.dci_obj_type == DC_OBJECT_ENEMY2));
-	    var human = (pinst.dci_obj_type == DC_OBJECT_HUMAN);
-	    if ((pinst.dci_obj_state == DC_OBJSTATE_ALIVE) && enemy) {
+	if ((pinst != noone) && (pinst.dci_obj_state == DC_OBJSTATE_ALIVE)) {
+
+	    if ((pinst.dci_obj_type == DC_OBJECT_ENEMY1) || (pinst.dci_obj_type == DC_OBJECT_ENEMY2)) {
 		pinst.dci_obj_state = DC_OBJSTATE_DYING;
 		n_hit++;
-	    } else if ((pinst.dci_obj_state == DC_OBJSTATE_ALIVE) && human) {
+	    } else if (pinst.dci_obj_type == DC_OBJECT_HUMAN) {
 		// Markup human as dead - but does *not* count as a hit
-		if (pinst.dci_obj_type == DC_OBJECT_HUMAN) {
-		    human.sprite_index = spr_human11dying;
-		    global.dcg_human_alive = false;
-		}
+		pinst.sprite_index = spr_human11dying;
+		global.dcg_human_alive = false;
 	    }
 	}
 	if ((tmp_gx == global.dcg_sel1_gx) && (tmp_gy == global.dcg_sel1_gy)) break;
