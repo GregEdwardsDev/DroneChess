@@ -3,8 +3,8 @@
   "resourceVersion": "1.0",
   "name": "spr_missileidleSouth",
   "bbox_bottom": 34,
-  "bbox_left": 12,
-  "bbox_right": 19,
+  "bbox_left": 13,
+  "bbox_right": 18,
   "bbox_top": 14,
   "bboxMode": 0,
   "collisionKind": 1,
@@ -13,8 +13,8 @@
   "edgeFiltering": false,
   "For3D": false,
   "frames": [
-    {"resourceType":"GMSpriteFrame","resourceVersion":"1.1","name":"d674f700-be3c-4164-a0c4-3f425ae85257",},
     {"resourceType":"GMSpriteFrame","resourceVersion":"1.1","name":"17936dea-4d34-44e1-a6d8-c81d9c37b3d0",},
+    {"resourceType":"GMSpriteFrame","resourceVersion":"1.1","name":"604517d3-66d3-4693-871d-1d125eac00a1",},
     {"resourceType":"GMSpriteFrame","resourceVersion":"1.1","name":"634e175f-a9d0-4f01-8a8c-dea517ba1618",},
     {"resourceType":"GMSpriteFrame","resourceVersion":"1.1","name":"067cfce4-c3d2-4d57-ba17-60a87dfc7bd7",},
     {"resourceType":"GMSpriteFrame","resourceVersion":"1.1","name":"ad8bbb57-ee49-4d2a-9c1b-f8fa8ecac014",},
@@ -59,8 +59,8 @@
     "timeUnits": 1,
     "tracks": [
       {"resourceType":"GMSpriteFramesTrack","resourceVersion":"1.0","name":"frames","builtinName":0,"events":[],"inheritsTrackColour":true,"interpolation":1,"isCreationTrack":false,"keyframes":{"resourceType":"KeyframeStore<SpriteFrameKeyframe>","resourceVersion":"1.0","Keyframes":[
-            {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"d674f700-be3c-4164-a0c4-3f425ae85257","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"1feee3b3-b088-4228-a18d-5d6dac300bd7","IsCreationKey":false,"Key":0.0,"Length":1.0,"Stretch":false,},
-            {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"17936dea-4d34-44e1-a6d8-c81d9c37b3d0","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"f7fb0266-7f1f-42e1-804d-5029d256b077","IsCreationKey":false,"Key":1.0,"Length":1.0,"Stretch":false,},
+            {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"17936dea-4d34-44e1-a6d8-c81d9c37b3d0","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"f7fb0266-7f1f-42e1-804d-5029d256b077","IsCreationKey":false,"Key":0.0,"Length":1.0,"Stretch":false,},
+            {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"604517d3-66d3-4693-871d-1d125eac00a1","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"1d920270-69c9-4195-8a33-03d817c021e1","IsCreationKey":false,"Key":1.0,"Length":1.0,"Stretch":false,},
             {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"634e175f-a9d0-4f01-8a8c-dea517ba1618","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"2d2dc75b-a96c-4101-a5dc-d04b197bc787","IsCreationKey":false,"Key":2.0,"Length":1.0,"Stretch":false,},
             {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"067cfce4-c3d2-4d57-ba17-60a87dfc7bd7","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"d2b59274-40d9-4fea-9eac-34ca38726d09","IsCreationKey":false,"Key":3.0,"Length":1.0,"Stretch":false,},
             {"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"1.0","Channels":{"0":{"resourceType":"SpriteFrameKeyframe","resourceVersion":"1.0","Id":{"name":"ad8bbb57-ee49-4d2a-9c1b-f8fa8ecac014","path":"sprites/spr_missileidleSouth/spr_missileidleSouth.yy",},},},"Disabled":false,"id":"7ffaab1e-1d18-4f34-9cd5-1c34ad699f7d","IsCreationKey":false,"Key":4.0,"Length":1.0,"Stretch":false,},
